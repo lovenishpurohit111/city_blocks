@@ -1,0 +1,10 @@
+<svg width="320" height="120" viewBox="0 0 320 120" xmlns="http://www.w3.org/2000/svg">
+<rect width="320" height="120" fill="none"/>
+<text x="20" y="54" font-family="Arial Black" font-size="44" fill="#ffcf5a" stroke="#5b3a0c" stroke-width="4">CITY</text>
+<text x="22" y="98" font-family="Arial Black" font-size="44" fill="#ff9f43" stroke="#5b3a0c" stroke-width="4">BLOCKS</text>
+<rect x="238" y="18" width="52" height="74" rx="2" fill="#b87722" stroke="#5b3a0c" stroke-width="4"/>
+<rect x="248" y="32" width="10" height="12" fill="#89c9ff"/>
+<rect x="266" y="32" width="10" height="12" fill="#89c9ff"/>
+<rect x="248" y="54" width="10" height="12" fill="#89c9ff"/>
+<rect x="266" y="54" width="10" height="12" fill="#89c9ff"/>
+</svg>

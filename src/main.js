@@ -111,11 +111,62 @@ class GameScene extends Phaser.Scene {
       return
     }
 
+    const overlap = last.blockWidth - delta
+
+    if (delta > 4) {
+      const cutWidth = this.currentBlock.blockWidth - overlap
+
+      const cut = this.add.rectangle(
+        this.currentBlock.x > last.x
+          ? this.currentBlock.x + overlap / 2
+          : this.currentBlock.x - overlap / 2,
+        this.currentBlock.y,
+        cutWidth,
+        48,
+        0x9c640c
+      )
+
+      cut.setStrokeStyle(3, 0x6b4b16)
+
+      this.tweens.add({
+        targets: cut,
+        y: cut.y + 900,
+        angle: 90,
+        duration: 1200,
+        ease: 'Quad.easeIn',
+        onComplete: () => cut.destroy()
+      })
+    } else {
+      const perfectText = this.add.text(
+        this.currentBlock.x - 35,
+        this.currentBlock.y - 40,
+        'PERFECT',
+        {
+          fontSize: '18px',
+          color: '#f1c40f',
+          fontStyle: 'bold'
+        }
+      )
+
+      this.tweens.add({
+        targets: perfectText,
+        y: perfectText.y - 30,
+        alpha: 0,
+        duration: 600,
+        onComplete: () => perfectText.destroy()
+      })
+    }
+
+    this.currentBlock.blockWidth = overlap
+
     this.currentBlock.x = Phaser.Math.Linear(
       this.currentBlock.x,
       last.x,
       0.5
     )
+
+    this.currentBlock.list[0].width = overlap
+    this.currentBlock.list[1].width = overlap - 8
 
     this.blocks.push(this.currentBlock)
 
@@ -145,6 +196,11 @@ class GameScene extends Phaser.Scene {
       fontSize: '34px',
       color: '#ff6b6b',
       fontStyle: 'bold'
+    }).setScrollFactor(0)
+
+    this.add.text(58, 340, 'SPACE / CLICK TO RETRY', {
+      fontSize: '18px',
+      color: '#ffffff'
     }).setScrollFactor(0)
   }
 

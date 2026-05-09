@@ -5,44 +5,41 @@ class GameScene extends Phaser.Scene {
     super('GameScene')
     this.blocks = []
     this.currentBlock = null
-    this.direction = 1
     this.score = 0
-    this.speed = 3
+    this.swingAngle = 0
     this.gameEnded = false
   }
 
   create() {
-    this.cameras.main.setBackgroundColor('#87CEEB')
+    this.cameras.main.setBackgroundColor('#c7d5f7')
 
-    for (let i = 0; i < 8; i++) {
-      const h = Phaser.Math.Between(180, 420)
+    for (let i = 0; i < 16; i++) {
+      const h = Phaser.Math.Between(180, 520)
+
       this.add.rectangle(
-        50 + i * 60,
-        700 - h / 2,
-        40,
+        i * 28,
+        720 - h / 2,
+        Phaser.Math.Between(25, 60),
         h,
-        0x95a5a6,
-        0.25
+        0x6c7a99,
+        0.2
       )
     }
 
-    this.scoreText = this.add.text(15, 15, 'Score: 0', {
-      fontSize: '24px',
-      color: '#ffffff',
+    this.scoreText = this.add.text(18, 14, '0', {
+      fontSize: '32px',
+      color: '#ffe66d',
       fontStyle: 'bold'
     }).setScrollFactor(0)
 
-    this.infoText = this.add.text(15, 45, 'SPACE / CLICK to drop', {
+    this.infoText = this.add.text(18, 50, 'SPACE / CLICK', {
       fontSize: '14px',
       color: '#ffffff'
     }).setScrollFactor(0)
 
-    this.base = this.createBlock(200, 620, 180)
-    this.blocks.push(this.base)
+    const base = this.createBlock(200, 640, 170)
+    this.blocks.push(base)
 
-    this.spawnBlock()
-
-    this.cursors = this.input.keyboard.createCursorKeys()
     this.spaceKey = this.input.keyboard.addKey(
       Phaser.Input.Keyboard.KeyCodes.SPACE
     )
@@ -54,28 +51,28 @@ class GameScene extends Phaser.Scene {
         this.dropBlock()
       }
     })
+
+    this.spawnBlock()
   }
 
   createBlock(x, y, width) {
     const container = this.add.container(x, y)
 
-    const body = this.add.rectangle(0, 0, width, 42, 0xe67e22)
-    body.setStrokeStyle(3, 0x2d3436)
+    const outer = this.add.rectangle(0, 0, width, 48, 0xc98b2e)
+    outer.setStrokeStyle(4, 0x6b4b16)
 
-    container.add(body)
+    const inner = this.add.rectangle(0, 0, width - 8, 40, 0xe0a33b)
 
-    const windows = Math.max(2, Math.floor(width / 32))
+    container.add(outer)
+    container.add(inner)
 
-    for (let i = 0; i < windows; i++) {
-      const win = this.add.rectangle(
-        -width / 2 + 18 + i * 28,
-        0,
-        14,
-        14,
-        0x2c3e50
-      )
+    const cols = Math.max(2, Math.floor(width / 34))
 
-      container.add(win)
+    for (let i = 0; i < cols; i++) {
+      const wx = -width / 2 + 20 + i * 30
+
+      container.add(this.add.rectangle(wx, 0, 18, 22, 0x2c3e50))
+      container.add(this.add.rectangle(wx, 0, 12, 16, 0x74b9ff))
     }
 
     container.blockWidth = width
@@ -84,64 +81,56 @@ class GameScene extends Phaser.Scene {
   }
 
   spawnBlock() {
-    const lastBlock = this.blocks[this.blocks.length - 1]
+    const last = this.blocks[this.blocks.length - 1]
 
     this.currentBlock = this.createBlock(
-      80,
-      lastBlock.y - 52,
-      lastBlock.blockWidth
+      200,
+      last.y - 56,
+      last.blockWidth
     )
 
     this.craneLine = this.add.line(
       0,
       0,
-      this.currentBlock.x,
-      this.currentBlock.y - 250,
-      this.currentBlock.x,
+      200,
+      this.currentBlock.y - 220,
+      200,
       this.currentBlock.y,
-      0x222222
-    )
-
-    this.craneLine.setLineWidth(2)
-
-    this.isDropping = false
+      0x333333
+    ).setLineWidth(3)
   }
 
   dropBlock() {
-    if (this.isDropping || !this.currentBlock || this.gameEnded) return
+    if (!this.currentBlock || this.gameEnded) return
 
-    this.isDropping = true
+    const last = this.blocks[this.blocks.length - 1]
+    const delta = Math.abs(this.currentBlock.x - last.x)
 
-    const lastBlock = this.blocks[this.blocks.length - 1]
-    const delta = Math.abs(this.currentBlock.x - lastBlock.x)
-
-    if (delta > lastBlock.blockWidth / 2) {
+    if (delta > last.blockWidth / 2) {
       this.endGame()
       return
     }
 
-    const overlap = lastBlock.blockWidth - delta
-
-    this.currentBlock.x = (this.currentBlock.x + lastBlock.x) / 2
-    this.currentBlock.blockWidth = overlap
-    this.currentBlock.list[0].width = overlap
+    this.currentBlock.x = Phaser.Math.Linear(
+      this.currentBlock.x,
+      last.x,
+      0.5
+    )
 
     this.blocks.push(this.currentBlock)
 
     this.score += 1
-    this.scoreText.setText(`Score: ${this.score}`)
+    this.scoreText.setText(this.score)
 
     this.craneLine.destroy()
 
-    this.cameras.main.shake(80, 0.002)
+    this.cameras.main.shake(80, 0.003)
 
     this.tweens.add({
       targets: this.cameras.main,
-      scrollY: this.cameras.main.scrollY - 52,
-      duration: 180
+      scrollY: this.cameras.main.scrollY - 56,
+      duration: 200
     })
-
-    this.speed += 0.12
 
     this.spawnBlock()
   }
@@ -152,44 +141,40 @@ class GameScene extends Phaser.Scene {
     this.add.rectangle(200, 320, 260, 120, 0x000000, 0.7)
       .setScrollFactor(0)
 
-    this.add.text(82, 295, 'GAME OVER', {
+    this.add.text(80, 295, 'GAME OVER', {
       fontSize: '34px',
-      color: '#ff7675',
+      color: '#ff6b6b',
       fontStyle: 'bold'
-    }).setScrollFactor(0)
-
-    this.add.text(70, 340, 'Click to Restart', {
-      fontSize: '20px',
-      color: '#ffffff'
     }).setScrollFactor(0)
   }
 
   update() {
-    if (
-      Phaser.Input.Keyboard.JustDown(this.spaceKey) &&
-      !this.gameEnded
-    ) {
+    if (this.gameEnded) {
+      if (Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
+        this.scene.restart()
+      }
+
+      return
+    }
+
+    if (Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
       this.dropBlock()
     }
 
-    if (!this.currentBlock || this.isDropping || this.gameEnded) return
+    if (!this.currentBlock) return
 
-    this.currentBlock.x += this.speed * this.direction
+    this.swingAngle += 0.025
+
+    this.currentBlock.x = 200 + Math.sin(this.swingAngle) * 120
+
+    this.currentBlock.rotation = Math.sin(this.swingAngle) * 0.15
 
     this.craneLine.setTo(
+      200,
+      this.currentBlock.y - 220,
       this.currentBlock.x,
-      this.currentBlock.y - 250,
-      this.currentBlock.x,
-      this.currentBlock.y
+      this.currentBlock.y - 8
     )
-
-    if (this.currentBlock.x > 320) {
-      this.direction = -1
-    }
-
-    if (this.currentBlock.x < 80) {
-      this.direction = 1
-    }
   }
 }
 

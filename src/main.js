@@ -7,6 +7,7 @@ class GameScene extends Phaser.Scene {
     this.currentBlock = null
     this.score = 0
     this.highScore = 0
+    this.combo = 0
     this.swingAngle = 0
     this.swingSpeed = 0.025
     this.gameEnded = false
@@ -14,9 +15,7 @@ class GameScene extends Phaser.Scene {
   }
 
   create() {
-    this.bgColor = { value: 0xc7d5f7 }
-
-    this.cameras.main.setBackgroundColor(this.bgColor.value)
+    this.cameras.main.setBackgroundColor('#c7d5f7')
 
     this.highScore = Number(localStorage.getItem('cityblocks-highscore') || 0)
 
@@ -58,9 +57,10 @@ class GameScene extends Phaser.Scene {
       color: '#ffffff'
     }).setScrollFactor(0)
 
-    this.infoText = this.add.text(18, 74, 'SPACE / CLICK', {
-      fontSize: '14px',
-      color: '#ffffff'
+    this.comboText = this.add.text(18, 76, '', {
+      fontSize: '16px',
+      color: '#f1c40f',
+      fontStyle: 'bold'
     }).setScrollFactor(0)
 
     const base = this.createBlock(200, 640, 170)
@@ -126,6 +126,21 @@ class GameScene extends Phaser.Scene {
     ).setLineWidth(3)
   }
 
+  createImpactParticles(x, y) {
+    for (let i = 0; i < 8; i++) {
+      const particle = this.add.circle(x, y, 3, 0xffffff)
+
+      this.tweens.add({
+        targets: particle,
+        x: x + Phaser.Math.Between(-40, 40),
+        y: y + Phaser.Math.Between(-20, 20),
+        alpha: 0,
+        duration: 500,
+        onComplete: () => particle.destroy()
+      })
+    }
+  }
+
   dropBlock() {
     if (!this.currentBlock || this.gameEnded) return
 
@@ -139,7 +154,32 @@ class GameScene extends Phaser.Scene {
 
     const overlap = last.blockWidth - delta
 
-    if (delta > 4) {
+    if (delta < 4) {
+      this.combo += 1
+      this.comboText.setText(`COMBO x${this.combo}`)
+
+      const perfectText = this.add.text(
+        this.currentBlock.x - 35,
+        this.currentBlock.y - 40,
+        'PERFECT',
+        {
+          fontSize: '18px',
+          color: '#f1c40f',
+          fontStyle: 'bold'
+        }
+      )
+
+      this.tweens.add({
+        targets: perfectText,
+        y: perfectText.y - 30,
+        alpha: 0,
+        duration: 600,
+        onComplete: () => perfectText.destroy()
+      })
+    } else {
+      this.combo = 0
+      this.comboText.setText('')
+
       const cutWidth = this.currentBlock.blockWidth - overlap
 
       const cut = this.add.rectangle(
@@ -162,26 +202,9 @@ class GameScene extends Phaser.Scene {
         ease: 'Quad.easeIn',
         onComplete: () => cut.destroy()
       })
-    } else {
-      const perfectText = this.add.text(
-        this.currentBlock.x - 35,
-        this.currentBlock.y - 40,
-        'PERFECT',
-        {
-          fontSize: '18px',
-          color: '#f1c40f',
-          fontStyle: 'bold'
-        }
-      )
-
-      this.tweens.add({
-        targets: perfectText,
-        y: perfectText.y - 30,
-        alpha: 0,
-        duration: 600,
-        onComplete: () => perfectText.destroy()
-      })
     }
+
+    this.createImpactParticles(this.currentBlock.x, this.currentBlock.y)
 
     this.currentBlock.blockWidth = overlap
 
@@ -196,7 +219,7 @@ class GameScene extends Phaser.Scene {
 
     this.blocks.push(this.currentBlock)
 
-    this.score += 1
+    this.score += 1 + this.combo
     this.scoreText.setText(this.score)
 
     if (this.score > this.highScore) {
@@ -205,18 +228,11 @@ class GameScene extends Phaser.Scene {
       this.highScoreText.setText(`BEST ${this.highScore}`)
     }
 
-    if (this.score === 10) {
-      this.cameras.main.fade(600, 40, 50, 90)
-      this.cameras.main.once('camerafadeoutcomplete', () => {
-        this.cameras.main.setBackgroundColor('#2c3e50')
-      })
-    }
-
     this.swingSpeed += 0.0007
 
     this.craneLine.destroy()
 
-    this.cameras.main.shake(80, 0.003)
+    this.cameras.main.shake(90, 0.004)
 
     this.tweens.add({
       targets: this.cameras.main,

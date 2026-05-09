@@ -12,6 +12,8 @@ class GameScene extends Phaser.Scene {
     this.swingSpeed = 0.025
     this.gameEnded = false
     this.clouds = []
+    this.towerTilt = 0
+    this.releaseMomentum = 0
   }
 
   create() {
@@ -21,7 +23,6 @@ class GameScene extends Phaser.Scene {
 
     for (let i = 0; i < 16; i++) {
       const h = Phaser.Math.Between(180, 520)
-
       this.add.rectangle(i * 28, 720 - h / 2, Phaser.Math.Between(25, 60), h, 0x6c7a99, 0.2)
     }
 
@@ -119,26 +120,16 @@ class GameScene extends Phaser.Scene {
     ).setLineWidth(3)
   }
 
-  createImpactParticles(x, y) {
-    for (let i = 0; i < 8; i++) {
-      const particle = this.add.circle(x, y, 3, 0xffffff)
-
-      this.tweens.add({
-        targets: particle,
-        x: x + Phaser.Math.Between(-40, 40),
-        y: y + Phaser.Math.Between(-20, 20),
-        alpha: 0,
-        duration: 500,
-        onComplete: () => particle.destroy()
-      })
-    }
-  }
-
   dropBlock() {
     if (!this.currentBlock || this.gameEnded) return
 
+    this.releaseMomentum = Math.cos(this.swingAngle) * 8
+
     const last = this.blocks[this.blocks.length - 1]
-    const delta = Math.abs(this.currentBlock.x - last.x)
+
+    const adjustedX = this.currentBlock.x + this.releaseMomentum
+
+    const delta = Math.abs(adjustedX - last.x)
 
     if (delta > last.blockWidth / 2) {
       this.endGame()
@@ -146,6 +137,8 @@ class GameScene extends Phaser.Scene {
     }
 
     const overlap = last.blockWidth - delta
+
+    this.towerTilt += (adjustedX - last.x) * 0.002
 
     if (delta < 4) {
       this.combo += 1
@@ -155,15 +148,18 @@ class GameScene extends Phaser.Scene {
       this.comboText.setText('')
     }
 
-    this.createImpactParticles(this.currentBlock.x, this.currentBlock.y)
-
     this.currentBlock.blockWidth = overlap
-    this.currentBlock.x = Phaser.Math.Linear(this.currentBlock.x, last.x, 0.5)
+
+    this.currentBlock.x = Phaser.Math.Linear(adjustedX, last.x, 0.5)
 
     this.currentBlock.list[0].width = overlap
     this.currentBlock.list[1].width = overlap - 8
 
     this.blocks.push(this.currentBlock)
+
+    for (let i = 1; i < this.blocks.length; i++) {
+      this.blocks[i].rotation = this.towerTilt
+    }
 
     this.score += 1 + this.combo
     this.scoreText.setText(this.score)
@@ -174,11 +170,11 @@ class GameScene extends Phaser.Scene {
       this.highScoreText.setText(`BEST ${this.highScore}`)
     }
 
-    this.swingSpeed += 0.0007
+    this.swingSpeed += 0.0009
 
     this.craneLine.destroy()
 
-    this.cameras.main.shake(90, 0.004)
+    this.cameras.main.shake(100, 0.005)
 
     this.tweens.add({
       targets: this.cameras.main,
@@ -191,6 +187,12 @@ class GameScene extends Phaser.Scene {
 
   endGame() {
     this.gameEnded = true
+
+    this.tweens.add({
+      targets: this.cameras.main,
+      rotation: this.towerTilt * 3,
+      duration: 800
+    })
 
     this.add.rectangle(200, 320, 260, 120, 0x000000, 0.7).setScrollFactor(0)
 
@@ -227,6 +229,7 @@ class GameScene extends Phaser.Scene {
     this.swingAngle += this.swingSpeed
 
     this.currentBlock.x = 200 + Math.sin(this.swingAngle) * 120
+
     this.currentBlock.rotation = Math.sin(this.swingAngle) * 0.15
 
     this.craneLine.setTo(200,120,this.currentBlock.x,this.currentBlock.y - 8)

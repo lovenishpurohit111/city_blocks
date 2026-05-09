@@ -14,6 +14,7 @@ class GameScene extends Phaser.Scene {
     this.clouds = []
     this.towerTilt = 0
     this.releaseMomentum = 0
+    this.windForce = 0
   }
 
   create() {
@@ -42,6 +43,11 @@ class GameScene extends Phaser.Scene {
 
     this.add.line(0,0,200,0,200,120,0x444444).setLineWidth(6)
     this.add.line(0,0,120,120,280,120,0x444444).setLineWidth(6)
+
+    this.windText = this.add.text(18, 100, '', {
+      fontSize: '14px',
+      color: '#dff9fb'
+    }).setScrollFactor(0)
 
     this.scoreText = this.add.text(18, 14, '0', {
       fontSize: '32px',
@@ -92,11 +98,8 @@ class GameScene extends Phaser.Scene {
     for (let i = 0; i < cols; i++) {
       const wx = -width / 2 + 20 + i * 30
 
-      const win = this.add.rectangle(wx, 0, 18, 22, 0x2c3e50)
-      const glow = this.add.rectangle(wx, 0, 12, 16, 0x74b9ff)
-
-      container.add(win)
-      container.add(glow)
+      container.add(this.add.rectangle(wx, 0, 18, 22, 0x2c3e50))
+      container.add(this.add.rectangle(wx, 0, 12, 16, 0x74b9ff))
     }
 
     container.blockWidth = width
@@ -120,6 +123,19 @@ class GameScene extends Phaser.Scene {
     ).setLineWidth(3)
   }
 
+  collapseTower() {
+    for (let i = 1; i < this.blocks.length; i++) {
+      this.tweens.add({
+        targets: this.blocks[i],
+        angle: Phaser.Math.Between(-90, 90),
+        x: this.blocks[i].x + Phaser.Math.Between(-120, 120),
+        y: this.blocks[i].y + 800,
+        duration: 1200 + i * 40,
+        ease: 'Quad.easeIn'
+      })
+    }
+  }
+
   dropBlock() {
     if (!this.currentBlock || this.gameEnded) return
 
@@ -127,22 +143,23 @@ class GameScene extends Phaser.Scene {
 
     const last = this.blocks[this.blocks.length - 1]
 
-    const adjustedX = this.currentBlock.x + this.releaseMomentum
+    const adjustedX = this.currentBlock.x + this.releaseMomentum + this.windForce
 
     const delta = Math.abs(adjustedX - last.x)
 
-    if (delta > last.blockWidth / 2) {
+    if (delta > last.blockWidth / 2 || Math.abs(this.towerTilt) > 0.32) {
       this.endGame()
       return
     }
 
     const overlap = last.blockWidth - delta
 
-    this.towerTilt += (adjustedX - last.x) * 0.002
+    this.towerTilt += (adjustedX - last.x) * 0.0025
 
     if (delta < 4) {
       this.combo += 1
       this.comboText.setText(`COMBO x${this.combo}`)
+      this.towerTilt *= 0.9
     } else {
       this.combo = 0
       this.comboText.setText('')
@@ -158,7 +175,7 @@ class GameScene extends Phaser.Scene {
     this.blocks.push(this.currentBlock)
 
     for (let i = 1; i < this.blocks.length; i++) {
-      this.blocks[i].rotation = this.towerTilt
+      this.blocks[i].rotation = this.towerTilt * (i / this.blocks.length)
     }
 
     this.score += 1 + this.combo
@@ -170,7 +187,15 @@ class GameScene extends Phaser.Scene {
       this.highScoreText.setText(`BEST ${this.highScore}`)
     }
 
-    this.swingSpeed += 0.0009
+    this.windForce = Phaser.Math.FloatBetween(-6, 6)
+
+    if (Math.abs(this.windForce) > 4) {
+      this.windText.setText(this.windForce > 0 ? 'WIND →' : '← WIND')
+    } else {
+      this.windText.setText('')
+    }
+
+    this.swingSpeed += 0.001
 
     this.craneLine.destroy()
 
@@ -188,9 +213,11 @@ class GameScene extends Phaser.Scene {
   endGame() {
     this.gameEnded = true
 
+    this.collapseTower()
+
     this.tweens.add({
       targets: this.cameras.main,
-      rotation: this.towerTilt * 3,
+      rotation: this.towerTilt * 4,
       duration: 800
     })
 
@@ -228,9 +255,11 @@ class GameScene extends Phaser.Scene {
 
     this.swingAngle += this.swingSpeed
 
-    this.currentBlock.x = 200 + Math.sin(this.swingAngle) * 120
+    const sway = Math.sin(this.swingAngle) * 120
 
-    this.currentBlock.rotation = Math.sin(this.swingAngle) * 0.15
+    this.currentBlock.x = 200 + sway + this.windForce * 2
+
+    this.currentBlock.rotation = Math.sin(this.swingAngle) * 0.18
 
     this.craneLine.setTo(200,120,this.currentBlock.x,this.currentBlock.y - 8)
   }

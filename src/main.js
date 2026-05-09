@@ -23,35 +23,23 @@ class GameScene extends Phaser.Scene {
   create() {
     this.audioContext = new (window.AudioContext || window.webkitAudioContext)()
 
-    this.cameras.main.setBackgroundColor('#c7d5f7')
+    this.cameras.main.setBackgroundColor('#b8c4e8')
 
     this.highScore = Number(localStorage.getItem('cityblocks-highscore') || 0)
 
-    for (let i = 0; i < 16; i++) {
-      const h = Phaser.Math.Between(180, 520)
+    for (let i = 0; i < 20; i++) {
+      const h = Phaser.Math.Between(180, 620)
 
       const building = this.add.rectangle(
-        i * 28,
-        720 - h / 2,
-        Phaser.Math.Between(25, 60),
+        i * 22,
+        760 - h / 2,
+        Phaser.Math.Between(20, 55),
         h,
-        0x6c7a99,
-        0.2
+        0x7f8db5,
+        0.15
       )
 
       this.skyline.push(building)
-    }
-
-    for (let i = 0; i < 35; i++) {
-      const star = this.add.circle(
-        Phaser.Math.Between(0, 400),
-        Phaser.Math.Between(0, 350),
-        Phaser.Math.Between(1, 2),
-        0xffffff,
-        0
-      )
-
-      this.stars.push(star)
     }
 
     for (let i = 0; i < 5; i++) {
@@ -61,35 +49,20 @@ class GameScene extends Phaser.Scene {
         Phaser.Math.Between(70, 120),
         35,
         0xffffff,
-        0.8
+        0.75
       )
 
-      cloud.speed = Phaser.Math.FloatBetween(0.1, 0.4)
+      cloud.speed = Phaser.Math.FloatBetween(0.1, 0.3)
       this.clouds.push(cloud)
     }
 
-    this.add.line(0,0,200,0,200,120,0x444444).setLineWidth(6)
-    this.add.line(0,0,120,120,280,120,0x444444).setLineWidth(6)
-
-    this.windText = this.add.text(18, 100, '', {
-      fontSize: '14px',
-      color: '#dff9fb'
-    }).setScrollFactor(0)
+    this.craneTower = this.add.rectangle(200, 55, 10, 120, 0x4a4a4a)
+    this.craneBeam = this.add.rectangle(200, 115, 170, 8, 0x4a4a4a)
+    this.craneCab = this.add.rectangle(145, 105, 22, 16, 0xd63031)
 
     this.scoreText = this.add.text(18, 14, '0', {
-      fontSize: '32px',
-      color: '#ffe66d',
-      fontStyle: 'bold'
-    }).setScrollFactor(0)
-
-    this.highScoreText = this.add.text(18, 50, `BEST ${this.highScore}`, {
-      fontSize: '18px',
-      color: '#ffffff'
-    }).setScrollFactor(0)
-
-    this.comboText = this.add.text(18, 76, '', {
-      fontSize: '16px',
-      color: '#f1c40f',
+      fontSize: '34px',
+      color: '#ffffff',
       fontStyle: 'bold'
     }).setScrollFactor(0)
 
@@ -127,10 +100,7 @@ class GameScene extends Phaser.Scene {
 
     osc.start()
 
-    gain.gain.exponentialRampToValueAtTime(
-      0.0001,
-      this.audioContext.currentTime + duration
-    )
+    gain.gain.exponentialRampToValueAtTime(0.0001, this.audioContext.currentTime + duration)
 
     osc.stop(this.audioContext.currentTime + duration)
   }
@@ -138,23 +108,32 @@ class GameScene extends Phaser.Scene {
   createBlock(x, y, width) {
     const container = this.add.container(x, y)
 
-    const outer = this.add.rectangle(0, 0, width, 48, 0xc98b2e)
-    outer.setStrokeStyle(4, 0x6b4b16)
+    const shadow = this.add.rectangle(4, 6, width, 52, 0x000000, 0.18)
+    const outer = this.add.rectangle(0, 0, width, 48, 0xb9771f)
+    const top = this.add.rectangle(0, -12, width - 4, 12, 0xe0a13d)
+    const body = this.add.rectangle(0, 6, width - 6, 28, 0xd48d2d)
 
-    const inner = this.add.rectangle(0, 0, width - 8, 40, 0xe0a33b)
+    outer.setStrokeStyle(4, 0x6e4a12)
 
+    container.add(shadow)
     container.add(outer)
-    container.add(inner)
+    container.add(body)
+    container.add(top)
 
     const cols = Math.max(2, Math.floor(width / 34))
 
     for (let i = 0; i < cols; i++) {
       const wx = -width / 2 + 20 + i * 30
-      container.add(this.add.rectangle(wx, 0, 18, 22, 0x2c3e50))
-      container.add(this.add.rectangle(wx, 0, 12, 16, 0x74b9ff))
+
+      const frame = this.add.rectangle(wx, 5, 18, 22, 0x2f3640)
+      const glow = this.add.rectangle(wx, 5, 12, 16, 0x74b9ff)
+
+      container.add(frame)
+      container.add(glow)
     }
 
     container.blockWidth = width
+
     return container
   }
 
@@ -163,8 +142,17 @@ class GameScene extends Phaser.Scene {
 
     this.currentBlock = this.createBlock(200, last.y - 56, last.blockWidth)
 
-    this.craneLine = this.add.line(0,0,200,120,this.currentBlock.x,this.currentBlock.y - 8,0x333333)
-      .setLineWidth(3)
+    this.craneHook = this.add.circle(this.currentBlock.x, this.currentBlock.y - 54, 7, 0x2d3436)
+
+    this.craneLine = this.add.line(
+      0,
+      0,
+      200,
+      115,
+      this.currentBlock.x,
+      this.currentBlock.y - 42,
+      0x2d3436
+    ).setLineWidth(3)
   }
 
   applyTowerPhysics() {
@@ -175,12 +163,13 @@ class GameScene extends Phaser.Scene {
     for (let i = 1; i < this.blocks.length; i++) {
       const strength = i / this.blocks.length
       this.blocks[i].rotation = this.towerTilt * strength
-      this.blocks[i].x += this.towerTilt * 0.35 * strength
     }
   }
 
   dropBlock() {
     if (!this.currentBlock || this.gameEnded) return
+
+    this.playTone(420, 0.05, 'triangle', 0.03)
 
     this.releaseMomentum = Math.cos(this.swingAngle) * 8
 
@@ -199,57 +188,16 @@ class GameScene extends Phaser.Scene {
 
     this.balanceDrift += (adjustedX - last.x) * 0.0009
 
-    if (delta < 4) {
-      this.combo += 1
-      this.comboText.setText(`COMBO x${this.combo}`)
-      this.balanceDrift *= 0.5
-      this.towerTilt *= 0.92
-      this.playTone(880, 0.08, 'square', 0.04)
-    } else {
-      this.combo = 0
-      this.comboText.setText('')
-      this.playTone(440, 0.06, 'triangle', 0.03)
-    }
-
     this.currentBlock.blockWidth = overlap
     this.currentBlock.x = Phaser.Math.Linear(adjustedX, last.x, 0.5)
 
-    this.currentBlock.list[0].width = overlap
-    this.currentBlock.list[1].width = overlap - 8
-
     this.blocks.push(this.currentBlock)
 
-    this.score += 1 + this.combo
+    this.score += 1
     this.scoreText.setText(this.score)
 
-    if (this.score > this.highScore) {
-      this.highScore = this.score
-      localStorage.setItem('cityblocks-highscore', this.highScore)
-      this.highScoreText.setText(`BEST ${this.highScore}`)
-      this.playTone(1200, 0.15, 'sawtooth', 0.05)
-    }
-
-    if (this.score > 12) {
-      this.cameras.main.setBackgroundColor('#1e272e')
-
-      this.stars.forEach(star => {
-        star.alpha = Phaser.Math.FloatBetween(0.4, 1)
-      })
-
-      this.skyline.forEach(building => {
-        building.fillColor = 0x2f3640
-      })
-    }
-
-    this.windForce = Phaser.Math.FloatBetween(-6, 6)
-
-    this.windText.setText(Math.abs(this.windForce) > 4 ? (this.windForce > 0 ? 'WIND →' : '← WIND') : '')
-
-    this.swingSpeed += 0.001
-
     this.craneLine.destroy()
-
-    this.cameras.main.shake(100, 0.005)
+    this.craneHook.destroy()
 
     this.tweens.add({
       targets: this.cameras.main,
@@ -263,26 +211,15 @@ class GameScene extends Phaser.Scene {
   endGame() {
     this.gameEnded = true
 
-    this.playTone(180, 0.4, 'sawtooth', 0.06)
+    this.playTone(140, 0.4, 'sawtooth', 0.06)
 
-    for (let i = 1; i < this.blocks.length; i++) {
-      this.tweens.add({
-        targets: this.blocks[i],
-        angle: Phaser.Math.Between(-120, 120),
-        x: this.blocks[i].x + Phaser.Math.Between(-150, 150),
-        y: this.blocks[i].y + 900,
-        duration: 1200 + i * 40,
-        ease: 'Quad.easeIn'
-      })
-    }
+    this.add.rectangle(200, 320, 260, 120, 0x000000, 0.7)
 
-    this.add.rectangle(200, 320, 260, 120, 0x000000, 0.7).setScrollFactor(0)
-
-    this.add.text(80, 295, 'GAME OVER', {
-      fontSize: '34px',
+    this.add.text(85, 300, 'GAME OVER', {
+      fontSize: '32px',
       color: '#ff6b6b',
       fontStyle: 'bold'
-    }).setScrollFactor(0)
+    })
   }
 
   update() {
@@ -305,10 +242,6 @@ class GameScene extends Phaser.Scene {
     }
 
     if (Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
-      if (this.audioContext.state === 'suspended') {
-        this.audioContext.resume()
-      }
-
       this.dropBlock()
     }
 
@@ -316,12 +249,15 @@ class GameScene extends Phaser.Scene {
 
     this.swingAngle += this.swingSpeed
 
-    const sway = Math.sin(this.swingAngle) * 120
+    const sway = Math.sin(this.swingAngle) * 110
 
-    this.currentBlock.x = 200 + sway + this.windForce * 2
-    this.currentBlock.rotation = Math.sin(this.swingAngle) * 0.18
+    this.currentBlock.x = 200 + sway
+    this.currentBlock.rotation = Math.sin(this.swingAngle) * 0.22
 
-    this.craneLine.setTo(200,120,this.currentBlock.x,this.currentBlock.y - 8)
+    this.craneHook.x = this.currentBlock.x
+    this.craneHook.y = this.currentBlock.y - 42
+
+    this.craneLine.setTo(200,115,this.currentBlock.x,this.currentBlock.y - 42)
   }
 }
 

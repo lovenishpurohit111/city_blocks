@@ -21,6 +21,8 @@ class GameScene extends Phaser.Scene {
   }
 
   create() {
+    this.audioContext = new (window.AudioContext || window.webkitAudioContext)()
+
     this.cameras.main.setBackgroundColor('#c7d5f7')
 
     this.highScore = Number(localStorage.getItem('cityblocks-highscore') || 0)
@@ -97,6 +99,10 @@ class GameScene extends Phaser.Scene {
     this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE)
 
     this.input.on('pointerdown', () => {
+      if (this.audioContext.state === 'suspended') {
+        this.audioContext.resume()
+      }
+
       if (this.gameEnded) {
         this.scene.restart()
       } else {
@@ -105,6 +111,28 @@ class GameScene extends Phaser.Scene {
     })
 
     this.spawnBlock()
+  }
+
+  playTone(freq, duration, type = 'square', volume = 0.03) {
+    const osc = this.audioContext.createOscillator()
+    const gain = this.audioContext.createGain()
+
+    osc.type = type
+    osc.frequency.value = freq
+
+    gain.gain.value = volume
+
+    osc.connect(gain)
+    gain.connect(this.audioContext.destination)
+
+    osc.start()
+
+    gain.gain.exponentialRampToValueAtTime(
+      0.0001,
+      this.audioContext.currentTime + duration
+    )
+
+    osc.stop(this.audioContext.currentTime + duration)
   }
 
   createBlock(x, y, width) {
@@ -176,9 +204,11 @@ class GameScene extends Phaser.Scene {
       this.comboText.setText(`COMBO x${this.combo}`)
       this.balanceDrift *= 0.5
       this.towerTilt *= 0.92
+      this.playTone(880, 0.08, 'square', 0.04)
     } else {
       this.combo = 0
       this.comboText.setText('')
+      this.playTone(440, 0.06, 'triangle', 0.03)
     }
 
     this.currentBlock.blockWidth = overlap
@@ -196,6 +226,7 @@ class GameScene extends Phaser.Scene {
       this.highScore = this.score
       localStorage.setItem('cityblocks-highscore', this.highScore)
       this.highScoreText.setText(`BEST ${this.highScore}`)
+      this.playTone(1200, 0.15, 'sawtooth', 0.05)
     }
 
     if (this.score > 12) {
@@ -231,6 +262,8 @@ class GameScene extends Phaser.Scene {
 
   endGame() {
     this.gameEnded = true
+
+    this.playTone(180, 0.4, 'sawtooth', 0.06)
 
     for (let i = 1; i < this.blocks.length; i++) {
       this.tweens.add({
@@ -272,6 +305,10 @@ class GameScene extends Phaser.Scene {
     }
 
     if (Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
+      if (this.audioContext.state === 'suspended') {
+        this.audioContext.resume()
+      }
+
       this.dropBlock()
     }
 

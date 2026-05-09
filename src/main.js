@@ -12,10 +12,12 @@ class GameScene extends Phaser.Scene {
     this.swingSpeed = 0.025
     this.gameEnded = false
     this.clouds = []
+    this.stars = []
     this.towerTilt = 0
     this.releaseMomentum = 0
     this.windForce = 0
     this.balanceDrift = 0
+    this.skyline = []
   }
 
   create() {
@@ -25,7 +27,29 @@ class GameScene extends Phaser.Scene {
 
     for (let i = 0; i < 16; i++) {
       const h = Phaser.Math.Between(180, 520)
-      this.add.rectangle(i * 28, 720 - h / 2, Phaser.Math.Between(25, 60), h, 0x6c7a99, 0.2)
+
+      const building = this.add.rectangle(
+        i * 28,
+        720 - h / 2,
+        Phaser.Math.Between(25, 60),
+        h,
+        0x6c7a99,
+        0.2
+      )
+
+      this.skyline.push(building)
+    }
+
+    for (let i = 0; i < 35; i++) {
+      const star = this.add.circle(
+        Phaser.Math.Between(0, 400),
+        Phaser.Math.Between(0, 350),
+        Phaser.Math.Between(1, 2),
+        0xffffff,
+        0
+      )
+
+      this.stars.push(star)
     }
 
     for (let i = 0; i < 5; i++) {
@@ -127,19 +151,6 @@ class GameScene extends Phaser.Scene {
     }
   }
 
-  collapseTower() {
-    for (let i = 1; i < this.blocks.length; i++) {
-      this.tweens.add({
-        targets: this.blocks[i],
-        angle: Phaser.Math.Between(-120, 120),
-        x: this.blocks[i].x + Phaser.Math.Between(-150, 150),
-        y: this.blocks[i].y + 900,
-        duration: 1200 + i * 40,
-        ease: 'Quad.easeIn'
-      })
-    }
-  }
-
   dropBlock() {
     if (!this.currentBlock || this.gameEnded) return
 
@@ -187,6 +198,18 @@ class GameScene extends Phaser.Scene {
       this.highScoreText.setText(`BEST ${this.highScore}`)
     }
 
+    if (this.score > 12) {
+      this.cameras.main.setBackgroundColor('#1e272e')
+
+      this.stars.forEach(star => {
+        star.alpha = Phaser.Math.FloatBetween(0.4, 1)
+      })
+
+      this.skyline.forEach(building => {
+        building.fillColor = 0x2f3640
+      })
+    }
+
     this.windForce = Phaser.Math.FloatBetween(-6, 6)
 
     this.windText.setText(Math.abs(this.windForce) > 4 ? (this.windForce > 0 ? 'WIND →' : '← WIND') : '')
@@ -209,13 +232,16 @@ class GameScene extends Phaser.Scene {
   endGame() {
     this.gameEnded = true
 
-    this.collapseTower()
-
-    this.tweens.add({
-      targets: this.cameras.main,
-      rotation: this.towerTilt * 5,
-      duration: 800
-    })
+    for (let i = 1; i < this.blocks.length; i++) {
+      this.tweens.add({
+        targets: this.blocks[i],
+        angle: Phaser.Math.Between(-120, 120),
+        x: this.blocks[i].x + Phaser.Math.Between(-150, 150),
+        y: this.blocks[i].y + 900,
+        duration: 1200 + i * 40,
+        ease: 'Quad.easeIn'
+      })
+    }
 
     this.add.rectangle(200, 320, 260, 120, 0x000000, 0.7).setScrollFactor(0)
 

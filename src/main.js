@@ -6,6 +6,7 @@ class GameScene extends Phaser.Scene {
     this.blocks = []
     this.currentBlock = null
     this.score = 0
+    this.highScore = 0
     this.swingAngle = 0
     this.swingSpeed = 0.025
     this.gameEnded = false
@@ -13,7 +14,11 @@ class GameScene extends Phaser.Scene {
   }
 
   create() {
-    this.cameras.main.setBackgroundColor('#c7d5f7')
+    this.bgColor = { value: 0xc7d5f7 }
+
+    this.cameras.main.setBackgroundColor(this.bgColor.value)
+
+    this.highScore = Number(localStorage.getItem('cityblocks-highscore') || 0)
 
     for (let i = 0; i < 16; i++) {
       const h = Phaser.Math.Between(180, 520)
@@ -48,7 +53,12 @@ class GameScene extends Phaser.Scene {
       fontStyle: 'bold'
     }).setScrollFactor(0)
 
-    this.infoText = this.add.text(18, 50, 'SPACE / CLICK', {
+    this.highScoreText = this.add.text(18, 50, `BEST ${this.highScore}`, {
+      fontSize: '18px',
+      color: '#ffffff'
+    }).setScrollFactor(0)
+
+    this.infoText = this.add.text(18, 74, 'SPACE / CLICK', {
       fontSize: '14px',
       color: '#ffffff'
     }).setScrollFactor(0)
@@ -152,6 +162,25 @@ class GameScene extends Phaser.Scene {
         ease: 'Quad.easeIn',
         onComplete: () => cut.destroy()
       })
+    } else {
+      const perfectText = this.add.text(
+        this.currentBlock.x - 35,
+        this.currentBlock.y - 40,
+        'PERFECT',
+        {
+          fontSize: '18px',
+          color: '#f1c40f',
+          fontStyle: 'bold'
+        }
+      )
+
+      this.tweens.add({
+        targets: perfectText,
+        y: perfectText.y - 30,
+        alpha: 0,
+        duration: 600,
+        onComplete: () => perfectText.destroy()
+      })
     }
 
     this.currentBlock.blockWidth = overlap
@@ -169,6 +198,19 @@ class GameScene extends Phaser.Scene {
 
     this.score += 1
     this.scoreText.setText(this.score)
+
+    if (this.score > this.highScore) {
+      this.highScore = this.score
+      localStorage.setItem('cityblocks-highscore', this.highScore)
+      this.highScoreText.setText(`BEST ${this.highScore}`)
+    }
+
+    if (this.score === 10) {
+      this.cameras.main.fade(600, 40, 50, 90)
+      this.cameras.main.once('camerafadeoutcomplete', () => {
+        this.cameras.main.setBackgroundColor('#2c3e50')
+      })
+    }
 
     this.swingSpeed += 0.0007
 

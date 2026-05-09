@@ -15,6 +15,7 @@ class GameScene extends Phaser.Scene {
     this.towerTilt = 0
     this.releaseMomentum = 0
     this.windForce = 0
+    this.balanceDrift = 0
   }
 
   create() {
@@ -97,13 +98,11 @@ class GameScene extends Phaser.Scene {
 
     for (let i = 0; i < cols; i++) {
       const wx = -width / 2 + 20 + i * 30
-
       container.add(this.add.rectangle(wx, 0, 18, 22, 0x2c3e50))
       container.add(this.add.rectangle(wx, 0, 12, 16, 0x74b9ff))
     }
 
     container.blockWidth = width
-
     return container
   }
 
@@ -112,24 +111,29 @@ class GameScene extends Phaser.Scene {
 
     this.currentBlock = this.createBlock(200, last.y - 56, last.blockWidth)
 
-    this.craneLine = this.add.line(
-      0,
-      0,
-      200,
-      120,
-      this.currentBlock.x,
-      this.currentBlock.y - 8,
-      0x333333
-    ).setLineWidth(3)
+    this.craneLine = this.add.line(0,0,200,120,this.currentBlock.x,this.currentBlock.y - 8,0x333333)
+      .setLineWidth(3)
+  }
+
+  applyTowerPhysics() {
+    this.balanceDrift *= 0.94
+    this.towerTilt += this.balanceDrift
+    this.towerTilt *= 0.985
+
+    for (let i = 1; i < this.blocks.length; i++) {
+      const strength = i / this.blocks.length
+      this.blocks[i].rotation = this.towerTilt * strength
+      this.blocks[i].x += this.towerTilt * 0.35 * strength
+    }
   }
 
   collapseTower() {
     for (let i = 1; i < this.blocks.length; i++) {
       this.tweens.add({
         targets: this.blocks[i],
-        angle: Phaser.Math.Between(-90, 90),
-        x: this.blocks[i].x + Phaser.Math.Between(-120, 120),
-        y: this.blocks[i].y + 800,
+        angle: Phaser.Math.Between(-120, 120),
+        x: this.blocks[i].x + Phaser.Math.Between(-150, 150),
+        y: this.blocks[i].y + 900,
         duration: 1200 + i * 40,
         ease: 'Quad.easeIn'
       })
@@ -147,36 +151,32 @@ class GameScene extends Phaser.Scene {
 
     const delta = Math.abs(adjustedX - last.x)
 
-    if (delta > last.blockWidth / 2 || Math.abs(this.towerTilt) > 0.32) {
+    if (delta > last.blockWidth / 2 || Math.abs(this.towerTilt) > 0.42) {
       this.endGame()
       return
     }
 
     const overlap = last.blockWidth - delta
 
-    this.towerTilt += (adjustedX - last.x) * 0.0025
+    this.balanceDrift += (adjustedX - last.x) * 0.0009
 
     if (delta < 4) {
       this.combo += 1
       this.comboText.setText(`COMBO x${this.combo}`)
-      this.towerTilt *= 0.9
+      this.balanceDrift *= 0.5
+      this.towerTilt *= 0.92
     } else {
       this.combo = 0
       this.comboText.setText('')
     }
 
     this.currentBlock.blockWidth = overlap
-
     this.currentBlock.x = Phaser.Math.Linear(adjustedX, last.x, 0.5)
 
     this.currentBlock.list[0].width = overlap
     this.currentBlock.list[1].width = overlap - 8
 
     this.blocks.push(this.currentBlock)
-
-    for (let i = 1; i < this.blocks.length; i++) {
-      this.blocks[i].rotation = this.towerTilt * (i / this.blocks.length)
-    }
 
     this.score += 1 + this.combo
     this.scoreText.setText(this.score)
@@ -189,11 +189,7 @@ class GameScene extends Phaser.Scene {
 
     this.windForce = Phaser.Math.FloatBetween(-6, 6)
 
-    if (Math.abs(this.windForce) > 4) {
-      this.windText.setText(this.windForce > 0 ? 'WIND →' : '← WIND')
-    } else {
-      this.windText.setText('')
-    }
+    this.windText.setText(Math.abs(this.windForce) > 4 ? (this.windForce > 0 ? 'WIND →' : '← WIND') : '')
 
     this.swingSpeed += 0.001
 
@@ -217,7 +213,7 @@ class GameScene extends Phaser.Scene {
 
     this.tweens.add({
       targets: this.cameras.main,
-      rotation: this.towerTilt * 4,
+      rotation: this.towerTilt * 5,
       duration: 800
     })
 
@@ -239,6 +235,8 @@ class GameScene extends Phaser.Scene {
       }
     }
 
+    this.applyTowerPhysics()
+
     if (this.gameEnded) {
       if (Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
         this.scene.restart()
@@ -258,7 +256,6 @@ class GameScene extends Phaser.Scene {
     const sway = Math.sin(this.swingAngle) * 120
 
     this.currentBlock.x = 200 + sway + this.windForce * 2
-
     this.currentBlock.rotation = Math.sin(this.swingAngle) * 0.18
 
     this.craneLine.setTo(200,120,this.currentBlock.x,this.currentBlock.y - 8)

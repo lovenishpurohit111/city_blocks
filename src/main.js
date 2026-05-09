@@ -7,26 +7,27 @@ class GameScene extends Phaser.Scene {
     this.currentBlock = null
     this.direction = 1
     this.score = 0
-    this.speed = 3
+    this.speed = 2.8
     this.gameEnded = false
   }
 
   create() {
-    this.cameras.main.setBackgroundColor('#101820')
+    this.createBackground()
 
     this.scoreText = this.add.text(20, 20, 'Score: 0', {
-      fontSize: '28px',
-      color: '#ffffff'
+      fontSize: '26px',
+      color: '#ffffff',
+      fontStyle: 'bold'
     }).setScrollFactor(0)
 
     this.highScore = Number(localStorage.getItem('cityblocks-highscore') || 0)
 
     this.highScoreText = this.add.text(20, 55, `High Score: ${this.highScore}`, {
       fontSize: '18px',
-      color: '#dfe6e9'
+      color: '#ecf0f1'
     }).setScrollFactor(0)
 
-    const base = this.add.rectangle(200, 580, 180, 40, 0x00b894)
+    const base = this.createBuildingBlock(200, 620, 180)
     this.blocks.push(base)
 
     this.spawnBlock()
@@ -41,16 +42,59 @@ class GameScene extends Phaser.Scene {
     })
   }
 
+  createBackground() {
+    this.cameras.main.setBackgroundColor('#7ed6df')
+
+    for (let i = 0; i < 10; i++) {
+      const width = Phaser.Math.Between(40, 90)
+      const height = Phaser.Math.Between(200, 500)
+      const x = i * 55
+      const y = 700 - height / 2
+
+      this.add.rectangle(x, y, width, height, 0x95a5a6, 0.25)
+    }
+  }
+
+  createBuildingBlock(x, y, width) {
+    const container = this.add.container(x, y)
+
+    const body = this.add.rectangle(0, 0, width, 42, 0xe67e22)
+    body.setStrokeStyle(3, 0x2d3436)
+
+    container.add(body)
+
+    const windowCount = Math.max(2, Math.floor(width / 35))
+
+    for (let i = 0; i < windowCount; i++) {
+      const windowX = -width / 2 + 20 + i * 30
+
+      const win = this.add.rectangle(windowX, 0, 16, 16, 0x2c3e50)
+      container.add(win)
+    }
+
+    container.blockWidth = width
+
+    return container
+  }
+
   spawnBlock() {
     const lastBlock = this.blocks[this.blocks.length - 1]
 
-    this.currentBlock = this.add.rectangle(
+    this.currentBlock = this.createBuildingBlock(
       80,
-      lastBlock.y - 50,
-      lastBlock.width,
-      40,
-      Phaser.Display.Color.RandomRGB().color
+      lastBlock.y - 52,
+      lastBlock.blockWidth
     )
+
+    this.craneLine = this.add.line(
+      0,
+      0,
+      this.currentBlock.x,
+      this.currentBlock.y - 260,
+      this.currentBlock.x,
+      this.currentBlock.y,
+      0x2d3436
+    ).setLineWidth(2)
 
     this.isDropping = false
   }
@@ -61,56 +105,79 @@ class GameScene extends Phaser.Scene {
     this.isDropping = true
 
     const lastBlock = this.blocks[this.blocks.length - 1]
+
     const delta = Math.abs(this.currentBlock.x - lastBlock.x)
 
-    if (delta > lastBlock.width / 2) {
+    if (delta > lastBlock.blockWidth / 2) {
       this.endGame()
       return
     }
 
-    const overlap = lastBlock.width - delta
+    const overlap = lastBlock.blockWidth - delta
 
-    const missedPartWidth = this.currentBlock.width - overlap
+    const cutWidth = this.currentBlock.blockWidth - overlap
 
-    if (missedPartWidth > 0) {
-      const missedX = this.currentBlock.x > lastBlock.x
-        ? this.currentBlock.x + overlap / 2
-        : this.currentBlock.x - overlap / 2
-
-      const missedPart = this.add.rectangle(
-        missedX,
+    if (cutWidth > 5) {
+      const cutPiece = this.add.rectangle(
+        this.currentBlock.x > lastBlock.x
+          ? this.currentBlock.x + overlap / 2
+          : this.currentBlock.x - overlap / 2,
         this.currentBlock.y,
-        missedPartWidth,
-        40,
-        this.currentBlock.fillColor
+        cutWidth,
+        42,
+        0xd35400
       )
 
+      cutPiece.setStrokeStyle(2, 0x2d3436)
+
       this.tweens.add({
-        targets: missedPart,
-        y: missedPart.y + 600,
-        angle: 45,
-        duration: 1000,
-        onComplete: () => missedPart.destroy()
+        targets: cutPiece,
+        y: cutPiece.y + 700,
+        angle: 90,
+        duration: 1200,
+        ease: 'Cubic.easeIn',
+        onComplete: () => cutPiece.destroy()
       })
     }
 
-    const perfectPlacement = delta < 5
+    const perfect = delta < 4
 
-    if (perfectPlacement) {
+    if (perfect) {
       this.score += 2
 
-      this.add.text(this.currentBlock.x - 30, this.currentBlock.y - 30, 'PERFECT!', {
-        fontSize: '20px',
-        color: '#ffeaa7'
+      const perfectText = this.add.text(
+        this.currentBlock.x - 35,
+        this.currentBlock.y - 50,
+        'PERFECT!',
+        {
+          fontSize: '18px',
+          color: '#f1c40f',
+          fontStyle: 'bold'
+        }
+      )
+
+      this.tweens.add({
+        targets: perfectText,
+        y: perfectText.y - 40,
+        alpha: 0,
+        duration: 700,
+        onComplete: () => perfectText.destroy()
       })
     } else {
       this.score += 1
     }
 
-    this.currentBlock.width = overlap
     this.currentBlock.x = (this.currentBlock.x + lastBlock.x) / 2
+    this.currentBlock.blockWidth = overlap
+
+    const body = this.currentBlock.list[0]
+    body.width = overlap
 
     this.blocks.push(this.currentBlock)
+
+    this.craneLine.destroy()
+
+    this.scoreText.setText(`Score: ${this.score}`)
 
     if (this.score > this.highScore) {
       this.highScore = this.score
@@ -118,14 +185,12 @@ class GameScene extends Phaser.Scene {
       this.highScoreText.setText(`High Score: ${this.highScore}`)
     }
 
-    this.scoreText.setText(`Score: ${this.score}`)
-
-    this.speed += 0.12
+    this.speed += 0.08
 
     this.tweens.add({
       targets: this.cameras.main,
-      scrollY: this.cameras.main.scrollY - 50,
-      duration: 250
+      scrollY: this.cameras.main.scrollY - 52,
+      duration: 200
     })
 
     this.spawnBlock()
@@ -134,13 +199,17 @@ class GameScene extends Phaser.Scene {
   endGame() {
     this.gameEnded = true
 
-    this.add.text(95, this.cameras.main.scrollY + 300, 'GAME OVER', {
-      fontSize: '42px',
-      color: '#ff7675'
+    this.add.rectangle(200, 350, 260, 140, 0x000000, 0.65)
+      .setScrollFactor(0)
+
+    this.add.text(90, 310, 'GAME OVER', {
+      fontSize: '38px',
+      color: '#ff7675',
+      fontStyle: 'bold'
     }).setScrollFactor(0)
 
-    this.add.text(75, this.cameras.main.scrollY + 360, 'Tap to Restart', {
-      fontSize: '28px',
+    this.add.text(92, 370, 'Tap to Restart', {
+      fontSize: '22px',
       color: '#ffffff'
     }).setScrollFactor(0)
   }
@@ -150,11 +219,18 @@ class GameScene extends Phaser.Scene {
 
     this.currentBlock.x += this.speed * this.direction
 
-    if (this.currentBlock.x > 340) {
+    this.craneLine.setTo(
+      this.currentBlock.x,
+      this.currentBlock.y - 260,
+      this.currentBlock.x,
+      this.currentBlock.y
+    )
+
+    if (this.currentBlock.x > 330) {
       this.direction = -1
     }
 
-    if (this.currentBlock.x < 60) {
+    if (this.currentBlock.x < 70) {
       this.direction = 1
     }
   }
@@ -164,7 +240,6 @@ const config = {
   type: Phaser.AUTO,
   width: 400,
   height: 700,
-  backgroundColor: '#101820',
   scene: GameScene,
   scale: {
     mode: Phaser.Scale.FIT,

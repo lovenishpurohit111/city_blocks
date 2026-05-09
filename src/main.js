@@ -7,7 +7,9 @@ class GameScene extends Phaser.Scene {
     this.currentBlock = null
     this.score = 0
     this.swingAngle = 0
+    this.swingSpeed = 0.025
     this.gameEnded = false
+    this.clouds = []
   }
 
   create() {
@@ -24,6 +26,20 @@ class GameScene extends Phaser.Scene {
         0x6c7a99,
         0.2
       )
+    }
+
+    for (let i = 0; i < 5; i++) {
+      const cloud = this.add.ellipse(
+        Phaser.Math.Between(0, 400),
+        Phaser.Math.Between(60, 220),
+        Phaser.Math.Between(70, 120),
+        35,
+        0xffffff,
+        0.8
+      )
+
+      cloud.speed = Phaser.Math.FloatBetween(0.1, 0.4)
+      this.clouds.push(cloud)
     }
 
     this.scoreText = this.add.text(18, 14, '0', {
@@ -136,25 +152,6 @@ class GameScene extends Phaser.Scene {
         ease: 'Quad.easeIn',
         onComplete: () => cut.destroy()
       })
-    } else {
-      const perfectText = this.add.text(
-        this.currentBlock.x - 35,
-        this.currentBlock.y - 40,
-        'PERFECT',
-        {
-          fontSize: '18px',
-          color: '#f1c40f',
-          fontStyle: 'bold'
-        }
-      )
-
-      this.tweens.add({
-        targets: perfectText,
-        y: perfectText.y - 30,
-        alpha: 0,
-        duration: 600,
-        onComplete: () => perfectText.destroy()
-      })
     }
 
     this.currentBlock.blockWidth = overlap
@@ -172,6 +169,8 @@ class GameScene extends Phaser.Scene {
 
     this.score += 1
     this.scoreText.setText(this.score)
+
+    this.swingSpeed += 0.0007
 
     this.craneLine.destroy()
 
@@ -205,6 +204,14 @@ class GameScene extends Phaser.Scene {
   }
 
   update() {
+    for (const cloud of this.clouds) {
+      cloud.x += cloud.speed
+
+      if (cloud.x > 470) {
+        cloud.x = -80
+      }
+    }
+
     if (this.gameEnded) {
       if (Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
         this.scene.restart()
@@ -219,7 +226,7 @@ class GameScene extends Phaser.Scene {
 
     if (!this.currentBlock) return
 
-    this.swingAngle += 0.025
+    this.swingAngle += this.swingSpeed
 
     this.currentBlock.x = 200 + Math.sin(this.swingAngle) * 120
 

@@ -22,14 +22,7 @@ class GameScene extends Phaser.Scene {
     for (let i = 0; i < 16; i++) {
       const h = Phaser.Math.Between(180, 520)
 
-      this.add.rectangle(
-        i * 28,
-        720 - h / 2,
-        Phaser.Math.Between(25, 60),
-        h,
-        0x6c7a99,
-        0.2
-      )
+      this.add.rectangle(i * 28, 720 - h / 2, Phaser.Math.Between(25, 60), h, 0x6c7a99, 0.2)
     }
 
     for (let i = 0; i < 5; i++) {
@@ -45,6 +38,9 @@ class GameScene extends Phaser.Scene {
       cloud.speed = Phaser.Math.FloatBetween(0.1, 0.4)
       this.clouds.push(cloud)
     }
+
+    this.add.line(0,0,200,0,200,120,0x444444).setLineWidth(6)
+    this.add.line(0,0,120,120,280,120,0x444444).setLineWidth(6)
 
     this.scoreText = this.add.text(18, 14, '0', {
       fontSize: '32px',
@@ -66,9 +62,7 @@ class GameScene extends Phaser.Scene {
     const base = this.createBlock(200, 640, 170)
     this.blocks.push(base)
 
-    this.spaceKey = this.input.keyboard.addKey(
-      Phaser.Input.Keyboard.KeyCodes.SPACE
-    )
+    this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE)
 
     this.input.on('pointerdown', () => {
       if (this.gameEnded) {
@@ -97,8 +91,11 @@ class GameScene extends Phaser.Scene {
     for (let i = 0; i < cols; i++) {
       const wx = -width / 2 + 20 + i * 30
 
-      container.add(this.add.rectangle(wx, 0, 18, 22, 0x2c3e50))
-      container.add(this.add.rectangle(wx, 0, 12, 16, 0x74b9ff))
+      const win = this.add.rectangle(wx, 0, 18, 22, 0x2c3e50)
+      const glow = this.add.rectangle(wx, 0, 12, 16, 0x74b9ff)
+
+      container.add(win)
+      container.add(glow)
     }
 
     container.blockWidth = width
@@ -109,19 +106,15 @@ class GameScene extends Phaser.Scene {
   spawnBlock() {
     const last = this.blocks[this.blocks.length - 1]
 
-    this.currentBlock = this.createBlock(
-      200,
-      last.y - 56,
-      last.blockWidth
-    )
+    this.currentBlock = this.createBlock(200, last.y - 56, last.blockWidth)
 
     this.craneLine = this.add.line(
       0,
       0,
       200,
-      this.currentBlock.y - 220,
-      200,
-      this.currentBlock.y,
+      120,
+      this.currentBlock.x,
+      this.currentBlock.y - 8,
       0x333333
     ).setLineWidth(3)
   }
@@ -157,62 +150,15 @@ class GameScene extends Phaser.Scene {
     if (delta < 4) {
       this.combo += 1
       this.comboText.setText(`COMBO x${this.combo}`)
-
-      const perfectText = this.add.text(
-        this.currentBlock.x - 35,
-        this.currentBlock.y - 40,
-        'PERFECT',
-        {
-          fontSize: '18px',
-          color: '#f1c40f',
-          fontStyle: 'bold'
-        }
-      )
-
-      this.tweens.add({
-        targets: perfectText,
-        y: perfectText.y - 30,
-        alpha: 0,
-        duration: 600,
-        onComplete: () => perfectText.destroy()
-      })
     } else {
       this.combo = 0
       this.comboText.setText('')
-
-      const cutWidth = this.currentBlock.blockWidth - overlap
-
-      const cut = this.add.rectangle(
-        this.currentBlock.x > last.x
-          ? this.currentBlock.x + overlap / 2
-          : this.currentBlock.x - overlap / 2,
-        this.currentBlock.y,
-        cutWidth,
-        48,
-        0x9c640c
-      )
-
-      cut.setStrokeStyle(3, 0x6b4b16)
-
-      this.tweens.add({
-        targets: cut,
-        y: cut.y + 900,
-        angle: 90,
-        duration: 1200,
-        ease: 'Quad.easeIn',
-        onComplete: () => cut.destroy()
-      })
     }
 
     this.createImpactParticles(this.currentBlock.x, this.currentBlock.y)
 
     this.currentBlock.blockWidth = overlap
-
-    this.currentBlock.x = Phaser.Math.Linear(
-      this.currentBlock.x,
-      last.x,
-      0.5
-    )
+    this.currentBlock.x = Phaser.Math.Linear(this.currentBlock.x, last.x, 0.5)
 
     this.currentBlock.list[0].width = overlap
     this.currentBlock.list[1].width = overlap - 8
@@ -246,18 +192,12 @@ class GameScene extends Phaser.Scene {
   endGame() {
     this.gameEnded = true
 
-    this.add.rectangle(200, 320, 260, 120, 0x000000, 0.7)
-      .setScrollFactor(0)
+    this.add.rectangle(200, 320, 260, 120, 0x000000, 0.7).setScrollFactor(0)
 
     this.add.text(80, 295, 'GAME OVER', {
       fontSize: '34px',
       color: '#ff6b6b',
       fontStyle: 'bold'
-    }).setScrollFactor(0)
-
-    this.add.text(58, 340, 'SPACE / CLICK TO RETRY', {
-      fontSize: '18px',
-      color: '#ffffff'
     }).setScrollFactor(0)
   }
 
@@ -287,15 +227,9 @@ class GameScene extends Phaser.Scene {
     this.swingAngle += this.swingSpeed
 
     this.currentBlock.x = 200 + Math.sin(this.swingAngle) * 120
-
     this.currentBlock.rotation = Math.sin(this.swingAngle) * 0.15
 
-    this.craneLine.setTo(
-      200,
-      this.currentBlock.y - 220,
-      this.currentBlock.x,
-      this.currentBlock.y - 8
-    )
+    this.craneLine.setTo(200,120,this.currentBlock.x,this.currentBlock.y - 8)
   }
 }
 

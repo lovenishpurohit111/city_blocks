@@ -249,6 +249,7 @@ function spawnPerfectParticles(x, y) {
 
 // ─── UPDATE ────────────────────────────────────────────────────────────────────
 function update() {
+  if (menuState) return;
   G.frame++;
   if (G.state !== 'playing') {
     G.particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.vy += 0.12; p.vx *= 0.97; p.life--; });

@@ -2,19 +2,12 @@
 // Self-contained canvas game (no Phaser dependency issues)
 
 // ─── CANVAS SETUP ──────────────────────────────────────────────────────────────
-const canvas = document.createElement('canvas');
-document.body.appendChild(canvas);
+const canvas = document.getElementById("game-canvas");
 const ctx = canvas.getContext('2d');
 const W = 400, H = 680;
 canvas.width = W; canvas.height = H;
 
-Object.assign(canvas.style, {
-  display: 'block',
-  imageRendering: 'pixelated',
-  position: 'fixed',
-  top: '50%', left: '50%',
-  transform: 'translate(-50%, -50%)',
-});
+// canvas styled via CSS
 
 function resize() {
   const vw = window.innerWidth, vh = window.innerHeight;

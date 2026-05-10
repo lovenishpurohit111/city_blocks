@@ -1,273 +1,621 @@
-import Phaser from 'phaser'
+// City Bloxx — Complete Game
+// Self-contained canvas game (no Phaser dependency issues)
 
-class GameScene extends Phaser.Scene {
-  constructor() {
-    super('GameScene')
-    this.blocks = []
-    this.currentBlock = null
-    this.score = 0
-    this.highScore = 0
-    this.combo = 0
-    this.swingAngle = 0
-    this.swingSpeed = 0.025
-    this.gameEnded = false
-    this.clouds = []
-    this.stars = []
-    this.towerTilt = 0
-    this.releaseMomentum = 0
-    this.windForce = 0
-    this.balanceDrift = 0
-    this.skyline = []
+// ─── CANVAS SETUP ──────────────────────────────────────────────────────────────
+const canvas = document.createElement('canvas');
+document.body.appendChild(canvas);
+const ctx = canvas.getContext('2d');
+const W = 400, H = 680;
+canvas.width = W; canvas.height = H;
+
+Object.assign(canvas.style, {
+  display: 'block',
+  imageRendering: 'pixelated',
+  position: 'fixed',
+  top: '50%', left: '50%',
+  transform: 'translate(-50%, -50%)',
+});
+
+function resize() {
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const scale = Math.min(vw / W, vh / H);
+  canvas.style.width = (W * scale) + 'px';
+  canvas.style.height = (H * scale) + 'px';
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ─── AUDIO ─────────────────────────────────────────────────────────────────────
+let ac;
+function initAudio() { if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)(); }
+function beep(freq = 440, dur = 0.1, type = 'square', vol = 0.15, decay = 0.08) {
+  if (!ac) return;
+  const o = ac.createOscillator(), g = ac.createGain();
+  o.connect(g); g.connect(ac.destination);
+  o.type = type; o.frequency.value = freq;
+  g.gain.setValueAtTime(vol, ac.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + dur);
+  o.start(); o.stop(ac.currentTime + dur + decay);
+}
+function sfxPlace()    { beep(300, 0.08, 'square', 0.18); setTimeout(() => beep(450, 0.06, 'square', 0.10), 70); }
+function sfxPerfect()  { [550, 720, 950].forEach((f, i) => setTimeout(() => beep(f, 0.14, 'square', 0.22), i * 75)); }
+function sfxCombo(n)   { beep(380 + n * 90, 0.16, 'square', 0.20); setTimeout(() => beep(560 + n * 90, 0.10, 'square', 0.16), 90); }
+function sfxFall()     { beep(160, 0.28, 'sawtooth', 0.18); setTimeout(() => beep(110, 0.38, 'sawtooth', 0.13), 140); }
+function sfxGameOver() { [380, 300, 220, 160, 110].forEach((f, i) => setTimeout(() => beep(f, 0.18, 'sawtooth', 0.16), i * 110)); }
+function sfxCrane()    { beep(190, 0.04, 'triangle', 0.04); }
+
+// ─── PALETTE ───────────────────────────────────────────────────────────────────
+const COLORS = [
+  { face: '#E8931A', top: '#F5BE3A', side: '#A86210', win: '#C8903A', accent: '#FFD060' },
+  { face: '#1F7FCC', top: '#3AAAF0', side: '#105898', win: '#4090C8', accent: '#60C0FF' },
+  { face: '#22A045', top: '#38C865', side: '#126828', win: '#48A868', accent: '#60E888' },
+  { face: '#C02828', top: '#E84848', side: '#881010', win: '#B05050', accent: '#FF7070' },
+  { face: '#7830C0', top: '#A850E0', side: '#501880', win: '#8850B0', accent: '#C078FF' },
+  { face: '#C06818', top: '#E08838', side: '#884008', win: '#B07838', accent: '#FFA840' },
+];
+
+const BASE_W   = 110;
+const BLOCK_H  = 46;
+const GROUND_Y = H - 70;
+const CRANE_RAIL = 70;
+const ROPE_LEN   = 58;
+const GRAVITY    = 0.52;
+
+// ─── STATE ─────────────────────────────────────────────────────────────────────
+let G = {};
+let menuState = true;
+
+function newGame() {
+  G = {
+    state: 'playing',
+    score: 0,
+    highScore: Number(localStorage.getItem('cb_hs') || 0),
+    combo: 0,
+    perfectStreak: 0,
+    level: 1,
+    frame: 0,
+    tower: [],
+    falling: null,
+    crane: { x: W / 2, dir: 1, speed: 2.6 },
+    angle: 0, angleV: 0,
+    camY: 0,
+    particles: [],
+    flash: { timer: 0, msg: '', color: '#fff' },
+    shake: 0,
+    groundGlow: 0,
+    craneBeepTimer: 0,
+    nightT: 0,
+    stars: buildStars(),
+    skyline: buildSkyline(),
+  };
+  G.tower.push(makeBlock(W / 2 - BASE_W / 2, GROUND_Y - BLOCK_H, BASE_W, 0, true));
+  nextCrane();
+}
+
+function makeBlock(x, y, w, colorIdx, foundation = false) {
+  return { x, y, w, h: BLOCK_H, color: colorIdx, angle: 0, settled: true, foundation };
+}
+
+function buildStars() {
+  return Array.from({ length: 80 }, () => ({
+    x: Math.random() * W, y: Math.random() * H * 0.65,
+    r: Math.random() * 1.4 + 0.3, t: Math.random() * Math.PI * 2,
+  }));
+}
+
+function buildSkyline() {
+  const arr = [];
+  for (let x = -10; x < W + 60; x += 22 + Math.random() * 24)
+    arr.push({ x, w: 18 + Math.random() * 32, h: 55 + Math.random() * 130, seed: Math.random() });
+  return arr;
+}
+
+function nextCrane() {
+  G.crane.x = Math.random() < 0.5 ? 30 : W - 30;
+  G.crane.dir = G.crane.x < W / 2 ? 1 : -1;
+  G.crane.speed = 2.6 + G.level * 0.14 + Math.min(G.combo * 0.06, 1.8);
+  G.angle = 0; G.angleV = 0;
+}
+
+function getBlockW() { return Math.max(28, BASE_W - (G.level - 1) * 2.5); }
+
+function getTopBlock() {
+  for (let i = G.tower.length - 1; i >= 0; i--)
+    if (G.tower[i].settled) return G.tower[i];
+  return null;
+}
+
+function topOfTower() {
+  let y = GROUND_Y;
+  G.tower.forEach(b => { if (b.settled) y = Math.min(y, b.y); });
+  return y;
+}
+
+// ─── DROP ──────────────────────────────────────────────────────────────────────
+function drop() {
+  if (G.falling || G.state !== 'playing') return;
+  initAudio();
+  const cw = getBlockW();
+  const hookX = G.crane.x + Math.sin(G.angle) * ROPE_LEN;
+  const hookY = CRANE_RAIL + ROPE_LEN + 4;
+  const ci = G.tower.length % COLORS.length;
+  G.falling = {
+    x: hookX - cw / 2, y: hookY,
+    w: cw, h: BLOCK_H, color: ci,
+    vx: G.crane.dir * 0.4 + Math.sin(G.angle) * 1.2,
+    vy: 0,
+    angle: G.angle * 0.35,
+    va: -G.angle * 0.04,
+    settled: false,
+  };
+}
+
+// ─── LAND ──────────────────────────────────────────────────────────────────────
+function land(topBlock) {
+  const f = G.falling;
+  f.y = topBlock.y - f.h;
+  f.vy = 0; f.vx = 0; f.angle = 0; f.va = 0; f.settled = true;
+
+  const oL = Math.max(f.x, topBlock.x);
+  const oR = Math.min(f.x + f.w, topBlock.x + topBlock.w);
+  const overlap = oR - oL;
+
+  if (overlap <= 2) {
+    G.falling = null;
+    sfxFall(); G.shake = 22;
+    spawnParticles(f.x + f.w / 2, f.y + f.h / 2, f.color, 20, true);
+    endGame(); return;
   }
 
-  create() {
-    this.audioContext = new (window.AudioContext || window.webkitAudioContext)()
+  const origW = f.w;
+  f.x = oL; f.w = overlap;
+  const pct = overlap / Math.min(origW, topBlock.w);
 
-    this.cameras.main.setBackgroundColor('#b8c4e8')
-
-    this.highScore = Number(localStorage.getItem('cityblocks-highscore') || 0)
-
-    for (let i = 0; i < 20; i++) {
-      const h = Phaser.Math.Between(180, 620)
-
-      const building = this.add.rectangle(
-        i * 22,
-        760 - h / 2,
-        Phaser.Math.Between(20, 55),
-        h,
-        0x7f8db5,
-        0.15
-      )
-
-      this.skyline.push(building)
+  let pts = 10;
+  if (pct >= 0.94) {
+    G.perfectStreak++;
+    G.combo++;
+    pts = 20 + G.perfectStreak * 8 + G.combo * 3;
+    if (G.combo >= 3) sfxCombo(G.combo); else sfxPerfect();
+    G.flash.msg = G.perfectStreak >= 3 ? `PERFECT x${G.perfectStreak}!` : 'PERFECT!';
+    G.flash.color = '#FFD700'; G.flash.timer = 85;
+    G.groundGlow = 18;
+    spawnPerfectParticles(f.x + f.w / 2, f.y);
+  } else {
+    G.perfectStreak = 0;
+    G.combo = Math.max(0, G.combo - 1);
+    if (G.combo >= 2) {
+      pts = 10 + G.combo * 4;
+      G.flash.msg = `COMBO x${G.combo}`;
+      G.flash.color = '#88FFAA';
+      G.flash.timer = 50;
     }
-
-    for (let i = 0; i < 5; i++) {
-      const cloud = this.add.ellipse(
-        Phaser.Math.Between(0, 400),
-        Phaser.Math.Between(60, 220),
-        Phaser.Math.Between(70, 120),
-        35,
-        0xffffff,
-        0.75
-      )
-
-      cloud.speed = Phaser.Math.FloatBetween(0.1, 0.3)
-      this.clouds.push(cloud)
-    }
-
-    this.craneTower = this.add.rectangle(200, 55, 10, 120, 0x4a4a4a)
-    this.craneBeam = this.add.rectangle(200, 115, 170, 8, 0x4a4a4a)
-    this.craneCab = this.add.rectangle(145, 105, 22, 16, 0xd63031)
-
-    this.scoreText = this.add.text(18, 14, '0', {
-      fontSize: '34px',
-      color: '#ffffff',
-      fontStyle: 'bold'
-    }).setScrollFactor(0)
-
-    const base = this.createBlock(200, 640, 170)
-    this.blocks.push(base)
-
-    this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE)
-
-    this.input.on('pointerdown', () => {
-      if (this.audioContext.state === 'suspended') {
-        this.audioContext.resume()
-      }
-
-      if (this.gameEnded) {
-        this.scene.restart()
-      } else {
-        this.dropBlock()
-      }
-    })
-
-    this.spawnBlock()
+    sfxPlace();
+    spawnParticles(f.x + f.w / 2, f.y, f.color, 8, false);
+    G.shake = 4;
   }
 
-  playTone(freq, duration, type = 'square', volume = 0.03) {
-    const osc = this.audioContext.createOscillator()
-    const gain = this.audioContext.createGain()
+  G.score += pts;
+  if (G.score > G.highScore) { G.highScore = G.score; localStorage.setItem('cb_hs', G.highScore); }
+  G.level = 1 + Math.floor(G.score / 130);
+  G.nightT = Math.min(1, G.score / 280);
 
-    osc.type = type
-    osc.frequency.value = freq
+  G.tower.push({ ...f });
+  G.falling = null;
+  nextCrane();
+}
 
-    gain.gain.value = volume
+function endGame() {
+  G.state = 'gameover';
+  sfxGameOver(); G.shake = 28;
+  G.tower.slice(-5).forEach(b => spawnParticles(b.x + b.w / 2, b.y + b.h / 2, b.color, 10, true));
+}
 
-    osc.connect(gain)
-    gain.connect(this.audioContext.destination)
-
-    osc.start()
-
-    gain.gain.exponentialRampToValueAtTime(0.0001, this.audioContext.currentTime + duration)
-
-    osc.stop(this.audioContext.currentTime + duration)
-  }
-
-  createBlock(x, y, width) {
-    const container = this.add.container(x, y)
-
-    const shadow = this.add.rectangle(4, 6, width, 52, 0x000000, 0.18)
-    const outer = this.add.rectangle(0, 0, width, 48, 0xb9771f)
-    const top = this.add.rectangle(0, -12, width - 4, 12, 0xe0a13d)
-    const body = this.add.rectangle(0, 6, width - 6, 28, 0xd48d2d)
-
-    outer.setStrokeStyle(4, 0x6e4a12)
-
-    container.add(shadow)
-    container.add(outer)
-    container.add(body)
-    container.add(top)
-
-    const cols = Math.max(2, Math.floor(width / 34))
-
-    for (let i = 0; i < cols; i++) {
-      const wx = -width / 2 + 20 + i * 30
-
-      const frame = this.add.rectangle(wx, 5, 18, 22, 0x2f3640)
-      const glow = this.add.rectangle(wx, 5, 12, 16, 0x74b9ff)
-
-      container.add(frame)
-      container.add(glow)
-    }
-
-    container.blockWidth = width
-
-    return container
-  }
-
-  spawnBlock() {
-    const last = this.blocks[this.blocks.length - 1]
-
-    this.currentBlock = this.createBlock(200, last.y - 56, last.blockWidth)
-
-    this.craneHook = this.add.circle(this.currentBlock.x, this.currentBlock.y - 54, 7, 0x2d3436)
-
-    this.craneLine = this.add.line(
-      0,
-      0,
-      200,
-      115,
-      this.currentBlock.x,
-      this.currentBlock.y - 42,
-      0x2d3436
-    ).setLineWidth(3)
-  }
-
-  applyTowerPhysics() {
-    this.balanceDrift *= 0.94
-    this.towerTilt += this.balanceDrift
-    this.towerTilt *= 0.985
-
-    for (let i = 1; i < this.blocks.length; i++) {
-      const strength = i / this.blocks.length
-      this.blocks[i].rotation = this.towerTilt * strength
-    }
-  }
-
-  dropBlock() {
-    if (!this.currentBlock || this.gameEnded) return
-
-    this.playTone(420, 0.05, 'triangle', 0.03)
-
-    this.releaseMomentum = Math.cos(this.swingAngle) * 8
-
-    const last = this.blocks[this.blocks.length - 1]
-
-    const adjustedX = this.currentBlock.x + this.releaseMomentum + this.windForce
-
-    const delta = Math.abs(adjustedX - last.x)
-
-    if (delta > last.blockWidth / 2 || Math.abs(this.towerTilt) > 0.42) {
-      this.endGame()
-      return
-    }
-
-    const overlap = last.blockWidth - delta
-
-    this.balanceDrift += (adjustedX - last.x) * 0.0009
-
-    this.currentBlock.blockWidth = overlap
-    this.currentBlock.x = Phaser.Math.Linear(adjustedX, last.x, 0.5)
-
-    this.blocks.push(this.currentBlock)
-
-    this.score += 1
-    this.scoreText.setText(this.score)
-
-    this.craneLine.destroy()
-    this.craneHook.destroy()
-
-    this.tweens.add({
-      targets: this.cameras.main,
-      scrollY: this.cameras.main.scrollY - 56,
-      duration: 200
-    })
-
-    this.spawnBlock()
-  }
-
-  endGame() {
-    this.gameEnded = true
-
-    this.playTone(140, 0.4, 'sawtooth', 0.06)
-
-    this.add.rectangle(200, 320, 260, 120, 0x000000, 0.7)
-
-    this.add.text(85, 300, 'GAME OVER', {
-      fontSize: '32px',
-      color: '#ff6b6b',
-      fontStyle: 'bold'
-    })
-  }
-
-  update() {
-    for (const cloud of this.clouds) {
-      cloud.x += cloud.speed
-
-      if (cloud.x > 470) {
-        cloud.x = -80
-      }
-    }
-
-    this.applyTowerPhysics()
-
-    if (this.gameEnded) {
-      if (Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
-        this.scene.restart()
-      }
-
-      return
-    }
-
-    if (Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
-      this.dropBlock()
-    }
-
-    if (!this.currentBlock) return
-
-    this.swingAngle += this.swingSpeed
-
-    const sway = Math.sin(this.swingAngle) * 110
-
-    this.currentBlock.x = 200 + sway
-    this.currentBlock.rotation = Math.sin(this.swingAngle) * 0.22
-
-    this.craneHook.x = this.currentBlock.x
-    this.craneHook.y = this.currentBlock.y - 42
-
-    this.craneLine.setTo(200,115,this.currentBlock.x,this.currentBlock.y - 42)
+// ─── PARTICLES ─────────────────────────────────────────────────────────────────
+function spawnParticles(x, y, ci, n, burst) {
+  const c = COLORS[ci % COLORS.length].top;
+  for (let i = 0; i < n; i++) {
+    const a = burst ? Math.random() * Math.PI * 2 : -Math.PI / 2 + (Math.random() - 0.5) * 1.4;
+    const spd = burst ? 1 + Math.random() * 5 : 1 + Math.random() * 3;
+    G.particles.push({ x, y, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd - (burst ? 1 : 2), life: 45 + Math.random() * 20, max: 65, color: c, r: 2 + Math.random() * 4 });
   }
 }
 
-new Phaser.Game({
-  type: Phaser.AUTO,
-  width: 400,
-  height: 700,
-  scene: GameScene,
-  scale: {
-    mode: Phaser.Scale.FIT,
-    autoCenter: Phaser.Scale.CENTER_BOTH
+function spawnPerfectParticles(x, y) {
+  const cols = ['#FFD700', '#FFF', '#FF8', '#FFB', '#FFA030'];
+  for (let i = 0; i < 22; i++) {
+    const a = Math.random() * Math.PI * 2, spd = 2 + Math.random() * 5;
+    G.particles.push({ x, y, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd - 2, life: 55, max: 55, color: cols[i % cols.length], r: 2 + Math.random() * 5 });
   }
-})
+}
+
+// ─── UPDATE ────────────────────────────────────────────────────────────────────
+function update() {
+  G.frame++;
+  if (G.state !== 'playing') {
+    G.particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.vy += 0.12; p.vx *= 0.97; p.life--; });
+    G.particles = G.particles.filter(p => p.life > 0);
+    return;
+  }
+
+  G.angleV += -0.0028 * G.angle + G.crane.dir * 0.0004;
+  G.angle += G.angleV;
+  G.angleV *= 0.993;
+
+  G.crane.x += G.crane.dir * G.crane.speed;
+  if (G.crane.x > W - 18) { G.crane.x = W - 18; G.crane.dir = -1; }
+  if (G.crane.x < 18)     { G.crane.x = 18;     G.crane.dir = 1; }
+
+  G.craneBeepTimer--;
+  if (G.craneBeepTimer <= 0) { sfxCrane(); G.craneBeepTimer = 20; }
+
+  if (G.falling) {
+    G.falling.vy += GRAVITY;
+    G.falling.x  += G.falling.vx;
+    G.falling.y  += G.falling.vy;
+    G.falling.angle += G.falling.va;
+    G.falling.va *= 0.95;
+    const top = getTopBlock();
+    if (top && G.falling.y + G.falling.h >= top.y && G.falling.vy > 0) land(top);
+    if (G.falling && G.falling.y > H + 120) endGame();
+  }
+
+  G.particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.vy += 0.11; p.vx *= 0.97; p.life--; });
+  G.particles = G.particles.filter(p => p.life > 0);
+  if (G.flash.timer > 0) G.flash.timer--;
+  if (G.groundGlow > 0) G.groundGlow--;
+  if (G.shake > 0) G.shake--;
+
+  const ty = topOfTower();
+  const target = Math.max(0, ty - H * 0.38);
+  G.camY += (target - G.camY) * 0.09;
+}
+
+// ─── DRAW BACKGROUND ───────────────────────────────────────────────────────────
+function drawBg() {
+  const t = G.nightT;
+  const lerp = (a, b, t) => Math.round(a + (b - a) * t);
+  const tc = [[74,144,217],[2,8,20]].map((c, i) => c.map((v, j) => lerp(c[j], [[2,8,20],[10,20,40]][i][j], t)));
+  const topC = `rgb(${lerp(74,2,t)},${lerp(144,8,t)},${lerp(217,20,t)})`;
+  const botC = `rgb(${lerp(135,10,t)},${lerp(206,20,t)},${lerp(235,40,t)})`;
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, topC); grad.addColorStop(1, botC);
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+
+  if (t > 0.25) {
+    const sa = Math.min(1, (t - 0.25) / 0.4);
+    G.stars.forEach(s => {
+      const tw = 0.5 + 0.5 * Math.sin(s.t + G.frame * 0.028);
+      ctx.globalAlpha = sa * tw * 0.9;
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  const camOff = G.camY * 0.12;
+  G.skyline.forEach(b => {
+    const bh = b.h + Math.sin(b.x * 0.11) * 18;
+    const by = GROUND_Y - bh + camOff - G.camY;
+    ctx.fillStyle = t > 0.45 ? `rgba(8,15,32,${0.45 + t * 0.45})` : `rgba(60,90,130,${0.25 + (1 - t) * 0.15})`;
+    ctx.fillRect(b.x, by, b.w, bh + 80);
+    if (t > 0.35) {
+      for (let wy = by + 6; wy < GROUND_Y - G.camY - 8; wy += 14) {
+        for (let wx = b.x + 3; wx < b.x + b.w - 5; wx += 9) {
+          if (Math.sin(wx * 6.3 + wy * 2.9 + b.seed * 99) > 0.3) {
+            ctx.fillStyle = `rgba(255,215,80,${0.55 * t})`;
+            ctx.fillRect(wx, wy, 4, 6);
+          }
+        }
+      }
+    }
+  });
+
+  const gy = GROUND_Y - G.camY;
+  const gg = ctx.createLinearGradient(0, gy, 0, H);
+  gg.addColorStop(0, '#3a3028'); gg.addColorStop(1, '#181210');
+  ctx.fillStyle = gg; ctx.fillRect(0, gy, W, H - gy + 2);
+  if (G.groundGlow > 0) {
+    ctx.fillStyle = `rgba(255,210,60,${G.groundGlow / 18 * 0.45})`;
+    ctx.fillRect(0, gy - 3, W, 5);
+  } else {
+    ctx.fillStyle = '#5a5040'; ctx.fillRect(0, gy - 1, W, 2);
+  }
+}
+
+// ─── DRAW BLOCK ────────────────────────────────────────────────────────────────
+function drawBlock(b, alpha = 1) {
+  const C = COLORS[b.color % COLORS.length];
+  const bx = b.x, by = b.y - G.camY, bw = b.w, bh = b.h;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(bx + bw / 2, by + bh / 2);
+  ctx.rotate(b.angle || 0);
+  const hw = bw / 2, hh = bh / 2, iso = 9;
+
+  ctx.fillStyle = 'rgba(0,0,0,0.2)';
+  ctx.fillRect(-hw + iso + 2, hh - 2, bw, 5);
+
+  ctx.fillStyle = C.side;
+  ctx.beginPath();
+  ctx.moveTo(hw, -hh); ctx.lineTo(hw + iso, -hh - iso);
+  ctx.lineTo(hw + iso, hh - iso); ctx.lineTo(hw, hh);
+  ctx.closePath(); ctx.fill();
+
+  ctx.fillStyle = C.top;
+  ctx.beginPath();
+  ctx.moveTo(-hw, -hh); ctx.lineTo(-hw + iso, -hh - iso);
+  ctx.lineTo(hw + iso, -hh - iso); ctx.lineTo(hw, -hh);
+  ctx.closePath(); ctx.fill();
+
+  ctx.fillStyle = C.face;
+  ctx.fillRect(-hw, -hh, bw, bh);
+
+  const fg = ctx.createLinearGradient(-hw, -hh, -hw, hh);
+  fg.addColorStop(0, 'rgba(255,255,255,0.12)'); fg.addColorStop(1, 'rgba(0,0,0,0.18)');
+  ctx.fillStyle = fg; ctx.fillRect(-hw, -hh, bw, bh);
+
+  const cols = Math.max(1, Math.floor(bw / 24));
+  const rows = Math.max(1, Math.floor(bh / 20));
+  const ww = Math.max(5, (bw - 8) / cols - 4);
+  const wh = Math.max(5, (bh - 8) / rows - 4);
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const wx = -hw + 5 + c * ((bw - 6) / cols);
+      const wy = -hh + 5 + r * ((bh - 6) / rows);
+      const lit = G.nightT > 0.25 && Math.sin(b.color * 7 + r * 11 + c * 5) > 0.1;
+      ctx.fillStyle = lit ? '#FFEE88' : C.win;
+      ctx.globalAlpha = alpha * (lit ? 1.0 : 0.65);
+      ctx.fillRect(wx, wy, ww, wh);
+    }
+  }
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1.5;
+  ctx.strokeRect(-hw, -hh, bw, bh);
+  ctx.restore();
+}
+
+// ─── DRAW CRANE ────────────────────────────────────────────────────────────────
+function drawCrane() {
+  const cx = G.crane.x;
+  const railY = CRANE_RAIL - G.camY;
+  const hookX = cx + Math.sin(G.angle) * ROPE_LEN;
+  const hookY = railY + ROPE_LEN;
+
+  ctx.strokeStyle = '#606060'; ctx.lineWidth = 9;
+  ctx.beginPath(); ctx.moveTo(cx - 90, railY); ctx.lineTo(cx - 90, railY - H); ctx.stroke();
+
+  ctx.strokeStyle = '#707070'; ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.moveTo(cx - 90, railY); ctx.lineTo(cx - 40, railY); ctx.stroke();
+
+  ctx.fillStyle = '#555'; ctx.fillRect(cx - 50, railY - 14, 20, 14);
+
+  ctx.strokeStyle = '#808080'; ctx.lineWidth = 7;
+  ctx.beginPath(); ctx.moveTo(cx - 90, railY); ctx.lineTo(cx + 90, railY); ctx.stroke();
+
+  ctx.fillStyle = '#4a4a4a'; ctx.fillRect(cx - 13, railY - 10, 26, 14);
+  ctx.fillStyle = '#666'; ctx.fillRect(cx - 10, railY - 8, 20, 10);
+
+  ctx.strokeStyle = '#999'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(cx, railY + 4); ctx.lineTo(hookX, hookY - 4); ctx.stroke();
+
+  ctx.fillStyle = '#888';
+  ctx.beginPath(); ctx.arc(hookX, hookY - 2, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#666'; ctx.lineWidth = 1.5; ctx.stroke();
+
+  const cw = getBlockW();
+  const ci = G.tower.length % COLORS.length;
+  const C = COLORS[ci];
+  ctx.save();
+  ctx.translate(hookX, hookY + 4);
+  ctx.rotate(G.angle * 0.38);
+  ctx.fillStyle = C.face; ctx.fillRect(-cw / 2, 0, cw, BLOCK_H);
+  ctx.fillStyle = C.top;
+  ctx.beginPath();
+  ctx.moveTo(-cw / 2, 0); ctx.lineTo(-cw / 2 + 7, -7);
+  ctx.lineTo(cw / 2 + 7, -7); ctx.lineTo(cw / 2, 0);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = C.win; ctx.globalAlpha = 0.6;
+  const pc = Math.max(1, Math.floor(cw / 24));
+  for (let i = 0; i < pc; i++) ctx.fillRect(-cw / 2 + 5 + i * (cw / pc), 6, Math.max(4, cw / pc - 6), 12);
+  ctx.globalAlpha = 1;
+  ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 1;
+  ctx.strokeRect(-cw / 2, 0, cw, BLOCK_H);
+  ctx.restore();
+}
+
+// ─── ROUNDED RECT HELPER ───────────────────────────────────────────────────────
+function rr(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y); ctx.closePath();
+}
+
+// ─── DRAW HUD ──────────────────────────────────────────────────────────────────
+function drawHUD() {
+  ctx.fillStyle = 'rgba(0,0,0,0.58)'; rr(10, 10, 120, 62, 9); ctx.fill();
+  ctx.fillStyle = '#FFD700'; ctx.font = 'bold 10px "Courier New"'; ctx.fillText('SCORE', 20, 27);
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 26px "Courier New"'; ctx.fillText(G.score, 20, 56);
+
+  ctx.fillStyle = 'rgba(0,0,0,0.52)'; rr(W - 80, 10, 70, 40, 8); ctx.fill();
+  ctx.fillStyle = '#88FFAA'; ctx.font = 'bold 9px "Courier New"'; ctx.fillText('LEVEL', W - 70, 25);
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 18px "Courier New"'; ctx.fillText(G.level, W - 70, 44);
+
+  ctx.fillStyle = 'rgba(0,0,0,0.42)'; rr(W / 2 - 52, 10, 104, 26, 6); ctx.fill();
+  ctx.fillStyle = '#aaa'; ctx.font = '9px "Courier New"'; ctx.textAlign = 'center';
+  ctx.fillText('BEST ' + G.highScore, W / 2, 27); ctx.textAlign = 'left';
+
+  if (G.combo >= 2) {
+    ctx.fillStyle = 'rgba(0,0,0,0.52)'; rr(10, 78, 95, 28, 6); ctx.fill();
+    ctx.fillStyle = '#FFAA44'; ctx.font = 'bold 13px "Courier New"'; ctx.fillText('x' + G.combo + ' COMBO', 18, 97);
+  }
+
+  const barW = 78, spd = Math.min(1, (G.crane.speed - 2.6) / 3.5);
+  ctx.fillStyle = '#aaa'; ctx.font = '7px "Courier New"'; ctx.fillText('SPD', 10, H - 54);
+  ctx.fillStyle = 'rgba(0,0,0,0.4)'; rr(10, H - 48, barW, 10, 3); ctx.fill();
+  if (spd > 0) {
+    const bg = ctx.createLinearGradient(10, 0, 10 + barW, 0);
+    bg.addColorStop(0, '#44FF88'); bg.addColorStop(0.5, '#FFEE44'); bg.addColorStop(1, '#FF4444');
+    ctx.fillStyle = bg; rr(10, H - 48, Math.max(4, barW * spd), 10, 3); ctx.fill();
+  }
+
+  if (!G.falling) {
+    const top = getTopBlock();
+    if (top) {
+      const lineY = top.y - BLOCK_H - G.camY;
+      ctx.setLineDash([5, 9]); ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, lineY); ctx.lineTo(W, lineY); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
+  if (G.flash.timer > 0) {
+    const a = Math.min(1, G.flash.timer / 18);
+    const sc = 1 + Math.max(0, (28 - G.flash.timer) / 28) * 0.28;
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.translate(W / 2, H * 0.36);
+    ctx.scale(sc, sc);
+    ctx.font = 'bold 17px "Courier New"';
+    const tw = ctx.measureText(G.flash.msg).width;
+    ctx.fillStyle = 'rgba(0,0,0,0.65)'; rr(-tw / 2 - 12, -22, tw + 24, 34, 7); ctx.fill();
+    ctx.fillStyle = G.flash.color; ctx.textAlign = 'center'; ctx.fillText(G.flash.msg, 0, 0);
+    ctx.textAlign = 'left'; ctx.restore();
+  }
+
+  if (G.score === 0 && G.state === 'playing') {
+    ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.font = '12px "Courier New"';
+    ctx.textAlign = 'center'; ctx.fillText('TAP or SPACE to drop!', W / 2, H - 18); ctx.textAlign = 'left';
+  }
+}
+
+// ─── MENU ──────────────────────────────────────────────────────────────────────
+function drawMenu() {
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#1a3a6e'); grad.addColorStop(1, '#2a4a8e');
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+
+  const t = Date.now() / 1000;
+  const fakeG = { camY: 0, nightT: 0, frame: 0 };
+  for (let i = 0; i < 5; i++) {
+    const wobble = Math.sin(t * 1.1 + i * 0.9) * 5;
+    const bw = BASE_W - i * 10;
+    const bx = W / 2 - bw / 2 + wobble;
+    const by = GROUND_Y - BLOCK_H * (i + 1) - i;
+    const orig = G;
+    G = fakeG;
+    drawBlock({ x: bx, y: by, w: bw, h: BLOCK_H, color: i, angle: 0 }, 1);
+    G = orig;
+  }
+  ctx.fillStyle = '#2a2010'; ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
+  ctx.fillStyle = '#5a5040'; ctx.fillRect(0, GROUND_Y - 1, W, 2);
+
+  ctx.fillStyle = 'rgba(0,0,0,0.78)'; rr(W / 2 - 136, 72, 272, 108, 12); ctx.fill();
+  ctx.strokeStyle = '#E8931A'; ctx.lineWidth = 2.5; rr(W / 2 - 136, 72, 272, 108, 12); ctx.stroke();
+  ctx.fillStyle = '#E8931A'; ctx.font = 'bold 48px "Courier New"'; ctx.textAlign = 'center';
+  ctx.fillText('CITY', W / 2, 128);
+  ctx.fillStyle = '#F5BE3A'; ctx.font = 'bold 30px "Courier New"';
+  ctx.fillText('B L O X X', W / 2, 164);
+  const hs = Number(localStorage.getItem('cb_hs') || 0);
+  if (hs > 0) { ctx.fillStyle = '#888'; ctx.font = '10px "Courier New"'; ctx.fillText('BEST: ' + hs, W / 2, 183); }
+
+  const pulse = 0.96 + 0.04 * Math.sin(t * 3.2);
+  ctx.save(); ctx.translate(W / 2, H * 0.61); ctx.scale(pulse, pulse);
+  ctx.fillStyle = '#E8931A'; rr(-85, -26, 170, 52, 10); ctx.fill();
+  ctx.strokeStyle = '#F5BE3A'; ctx.lineWidth = 2; rr(-85, -26, 170, 52, 10); ctx.stroke();
+  ctx.fillStyle = '#000'; ctx.font = 'bold 20px "Courier New"'; ctx.fillText('PLAY', 0, 8);
+  ctx.restore();
+
+  ctx.fillStyle = 'rgba(0,0,0,0.52)'; rr(W / 2 - 122, H * 0.71, 244, 82, 9); ctx.fill();
+  ctx.fillStyle = '#ccc'; ctx.font = '11px "Courier New"'; ctx.textAlign = 'center';
+  ['Stack blocks to build a tower', 'PERFECT overlap = bonus points', 'Click  Tap  Space to drop'].forEach((l, i) => ctx.fillText(l, W / 2, H * 0.71 + 22 + i * 20));
+  ctx.textAlign = 'left';
+}
+
+// ─── GAME OVER ─────────────────────────────────────────────────────────────────
+function drawGameOver() {
+  ctx.fillStyle = 'rgba(0,0,0,0.72)'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = 'rgba(15,8,5,0.97)'; rr(W / 2 - 145, H / 2 - 168, 290, 336, 14); ctx.fill();
+  ctx.strokeStyle = '#C02828'; ctx.lineWidth = 3; rr(W / 2 - 145, H / 2 - 168, 290, 336, 14); ctx.stroke();
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#FF4444'; ctx.font = 'bold 30px "Courier New"'; ctx.fillText('GAME OVER', W / 2, H / 2 - 118);
+  ctx.fillStyle = '#777'; ctx.font = '11px "Courier New"'; ctx.fillText('YOUR SCORE', W / 2, H / 2 - 76);
+  ctx.fillStyle = '#FFD700'; ctx.font = 'bold 56px "Courier New"'; ctx.fillText(G.score, W / 2, H / 2 - 32);
+  ctx.fillStyle = '#555'; ctx.font = '10px "Courier New"'; ctx.fillText('BEST', W / 2, H / 2 + 8);
+  ctx.fillStyle = '#aaa'; ctx.font = 'bold 30px "Courier New"'; ctx.fillText(G.highScore, W / 2, H / 2 + 38);
+  ctx.fillStyle = '#666'; ctx.font = '11px "Courier New"';
+  ctx.fillText('BLOCKS: ' + (G.tower.length - 1), W / 2, H / 2 + 68);
+  ctx.fillText('MAX LEVEL: ' + G.level, W / 2, H / 2 + 86);
+
+  const pulse = 0.97 + 0.03 * Math.sin(Date.now() / 300);
+  ctx.save(); ctx.translate(W / 2, H / 2 + 136); ctx.scale(pulse, pulse);
+  ctx.fillStyle = '#E8931A'; rr(-95, -26, 190, 52, 10); ctx.fill();
+  ctx.strokeStyle = '#F5BE3A'; ctx.lineWidth = 2; rr(-95, -26, 190, 52, 10); ctx.stroke();
+  ctx.fillStyle = '#000'; ctx.font = 'bold 18px "Courier New"'; ctx.fillText('PLAY AGAIN', 0, 8);
+  ctx.restore();
+  ctx.textAlign = 'left';
+}
+
+// ─── RENDER ────────────────────────────────────────────────────────────────────
+function render() {
+  let sx = 0, sy = 0;
+  if (G && G.shake > 0) { sx = (Math.random() - 0.5) * G.shake * 0.5; sy = (Math.random() - 0.5) * G.shake * 0.28; }
+  ctx.save(); ctx.translate(sx, sy);
+
+  if (menuState) { drawMenu(); ctx.restore(); return; }
+
+  drawBg();
+  G.tower.forEach(b => drawBlock(b));
+  if (!G.falling && G.state === 'playing') drawCrane();
+  if (G.falling) drawBlock(G.falling);
+
+  G.particles.forEach(p => {
+    ctx.globalAlpha = (p.life / p.max) * 0.9;
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x, p.y - G.camY, p.r * (p.life / p.max), 0, Math.PI * 2); ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+
+  if (G.state === 'playing') drawHUD();
+  if (G.state === 'gameover') { drawHUD(); drawGameOver(); }
+  ctx.restore();
+}
+
+// ─── LOOP ──────────────────────────────────────────────────────────────────────
+function loop() { update(); render(); requestAnimationFrame(loop); }
+
+// ─── INPUT ─────────────────────────────────────────────────────────────────────
+function handleInput(cx, cy) {
+  initAudio();
+  const rect = canvas.getBoundingClientRect();
+  const x = (cx - rect.left) * (W / rect.width);
+  const y = (cy - rect.top) * (H / rect.height);
+
+  if (menuState) {
+    if (x > W / 2 - 85 && x < W / 2 + 85 && y > H * 0.61 - 26 && y < H * 0.61 + 26) {
+      menuState = false; newGame();
+    }
+    return;
+  }
+  if (G.state === 'playing') { drop(); return; }
+  if (G.state === 'gameover') {
+    if (x > W / 2 - 95 && x < W / 2 + 95 && y > H / 2 + 110 && y < H / 2 + 162) newGame();
+  }
+}
+
+canvas.addEventListener('click', e => handleInput(e.clientX, e.clientY));
+canvas.addEventListener('touchstart', e => { e.preventDefault(); const t = e.touches[0]; handleInput(t.clientX, t.clientY); }, { passive: false });
+document.addEventListener('keydown', e => {
+  if (['Space', 'ArrowDown', 'Enter'].includes(e.code)) {
+    e.preventDefault(); initAudio();
+    if (menuState) { menuState = false; newGame(); return; }
+    if (G.state === 'playing') drop();
+    else if (G.state === 'gameover') newGame();
+  }
+});
+
+loop();
